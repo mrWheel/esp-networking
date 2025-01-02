@@ -67,15 +67,15 @@ void loop()
 
 1a. **Connect via Telnet**:
    ```bash
-   telnet device-ip-address
+   telnet `device-ip-address`
    ```
    Default port: 23
    
 1b. **Connect via nc**:
    ```bash
-   nc device-ip-address 23
+   nc `device-ip-address` 23
    ```
-or instead of device-ip-address use mDNSname.local
+or instead of `device-ip-address` use `mDNSname`.local
 
 3. **Features**:
    - All debug output is mirrored to both Serial and Telnet
