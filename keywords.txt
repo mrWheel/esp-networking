@@ -1,0 +1,29 @@
+#######################################
+# Syntax Coloring Map For Networking
+#######################################
+
+#######################################
+# Classes & Datatypes (KEYWORD1)
+#######################################
+Networking	        KEYWORD1
+MultiStream	        KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+begin	              KEYWORD2
+loop	              KEYWORD2
+getIPAddress	      KEYWORD2
+getIPAddressString	KEYWORD2
+isConnected	        KEYWORD2
+write	              KEYWORD2
+available	          KEYWORD2
+read	              KEYWORD2
+peek	              KEYWORD2
+flush	              KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+TELNET_PORT	        LITERAL1
+OTA_PORT	          LITERAL1
