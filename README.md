@@ -1,6 +1,6 @@
 # ESP8266/ESP32 Networking Library
 
-A comprehensive networking solution for ESP8266/ESP32 microcontrollers that simplifies WiFi management, remote debugging, and OTA updates.
+A networking solution for ESP8266/ESP32 microcontrollers that simplifies WiFi management, remote debugging, and OTA updates.
 
 ## Features
 
@@ -14,7 +14,7 @@ A comprehensive networking solution for ESP8266/ESP32 microcontrollers that simp
 ## Installation
 
 1. Install this library in your Arduino/PlatformIO project
-2. Include the necessary dependencies:
+2. For the Arduino IDE include the necessary dependencies:
    - WiFiManager
    - ESP8266WiFi (for ESP8266) or WiFi (for ESP32)
    - ESP8266mDNS (for ESP8266) or ESPmDNS (for ESP32)
@@ -28,18 +28,21 @@ A comprehensive networking solution for ESP8266/ESP32 microcontrollers that simp
 Networking* networking = nullptr;
 Stream* debug = nullptr;
 
-void setup() {
+void setup()
+{
     networking = new Networking();
     
     // Parameters: hostname, reset pin, serial object, baud rate
     debug = networking->begin("esp8266", 0, Serial, 115200);
     
-    if (!debug) {
+    if (!debug)
+    {
         ESP.restart(); // Restart if connection fails
     }
 }
 
-void loop() {
+void loop()
+{
     // Must be called in main loop
     networking->loop();
     
@@ -56,19 +59,25 @@ void loop() {
    - Configure your WiFi credentials through the captive portal
 
 2. **Reset WiFi Settings**:
-   - Hold the reset pin LOW during boot
+   - Hold the `resetPin` LOW during boot
    - WiFi settings will be cleared
    - Device will return to AP mode for reconfiguration
 
 ## Remote Debugging
 
-1. **Connect via Telnet**:
+1a. **Connect via Telnet**:
    ```bash
    telnet device-ip-address
    ```
    Default port: 23
+   
+1b. **Connect via nc**:
+   ```bash
+   nc device-ip-address 23
+   ```
+or instead of device-ip-address use MDNSname.local
 
-2. **Features**:
+3. **Features**:
    - All debug output is mirrored to both Serial and Telnet
    - Multiple debugging sessions supported
    - Automatic session management
@@ -76,7 +85,8 @@ void loop() {
 ## Network Status
 
 ```cpp
-if (networking->isConnected()) {
+if (networking->isConnected())
+{
     debug->print("IP Address: ");
     debug->println(networking->getIPAddressString());
 }
