@@ -26,6 +26,7 @@
 *    
 *       if (!debug) 
 *       {
+*           //-- Restart if connection fails
 *           ESP.restart(); // Restart if connection fails
 *       }
 *   }
@@ -187,9 +188,9 @@ Stream* Networking::begin(const char* hostname, int resetPin
     //-- Initialize WiFiManager
     WiFiManager wifiManager;
     #ifdef ESP8266
-    wifiManager.setHostname(_hostname);
+        wifiManager.setHostname(_hostname);
     #else
-    WiFi.setHostname(_hostname);
+        WiFi.setHostname(_hostname);
     #endif
 
     //-- Try to connect to WiFi or start config portal
@@ -225,7 +226,7 @@ void Networking::loop()
     
     //-- Handle MDNS
     #ifdef ESP8266
-    MDNS.update();
+        MDNS.update();
     #endif
 
     //-- Handle telnet connections
@@ -238,11 +239,7 @@ void Networking::loop()
         }
         
         _telnetClient = _telnetServer->available();
-        #ifdef ESP8266
-        _telnetClient.println("Welcome to ESP8266 Telnet Server!");
-        #else
-        _telnetClient.println("Welcome to ESP32 Telnet Server!");
-        #endif
+        _telnetClient.printf("Welcome to [%s] Telnet Server!\r\n", _hostname);
     }
 
     //-- Handle disconnections
