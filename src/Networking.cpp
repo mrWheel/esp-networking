@@ -76,7 +76,7 @@
 
 #include "Networking.h"
 
-// Networking implementation
+//-- Networking implementation
 Networking::Networking() 
     : _hostname(nullptr), _resetPin(-1), _serial(nullptr),
       _telnetServer(nullptr), _multiStream(nullptr) {}
@@ -99,7 +99,7 @@ void Networking::setupMDNS()
     {
         _multiStream->println("MDNS responder started");
         MDNS.addService("telnet", "tcp", TELNET_PORT);
-        // Add Arduino OTA service
+        //-- Add Arduino OTA service
         MDNS.addService("arduino", "tcp", OTA_PORT);
     } 
     else 
@@ -110,7 +110,7 @@ void Networking::setupMDNS()
 
 void Networking::setupOTA() 
 {
-    // Configure ArduinoOTA
+    //-- Configure ArduinoOTA
     ArduinoOTA.setHostname(_hostname);
     
     ArduinoOTA.onStart([this]() 
@@ -162,20 +162,20 @@ Stream* Networking::begin(const char* hostname, int resetPin
     _resetPin = resetPin;
     _serial = &serial;
     
-    // Initialize Serial
+    //-- Initialize Serial
     serial.begin(serialSpeed);
     delay(100);
 
-    // Initialize telnet server
+    //-- Initialize telnet server
     _telnetServer = new WiFiServer(TELNET_PORT);
     
-    // Initialize MultiStream
+    //-- Initialize MultiStream
     _multiStream = new MultiStream(&serial, &_telnetClient);
     
-    // Initialize reset pin
+    //-- Initialize reset pin
     pinMode(_resetPin, INPUT_PULLUP);
 
-    // Check if reset is requested
+    //-- Check if reset is requested
     if (digitalRead(_resetPin) == LOW) 
     {
         _multiStream->println("Reset button pressed, clearing WiFi settings...");
@@ -184,7 +184,7 @@ Stream* Networking::begin(const char* hostname, int resetPin
         _multiStream->println("Settings cleared!");
     }
 
-    // Initialize WiFiManager
+    //-- Initialize WiFiManager
     WiFiManager wifiManager;
     #ifdef ESP8266
     wifiManager.setHostname(_hostname);
@@ -192,7 +192,7 @@ Stream* Networking::begin(const char* hostname, int resetPin
     WiFi.setHostname(_hostname);
     #endif
 
-    // Try to connect to WiFi or start config portal
+    //-- Try to connect to WiFi or start config portal
     if (!wifiManager.autoConnect(_hostname)) 
     {
         _multiStream->println("Failed to connect and hit timeout");
@@ -204,13 +204,13 @@ Stream* Networking::begin(const char* hostname, int resetPin
     _multiStream->print("IP address: ");
     _multiStream->println(getIPAddressString());
 
-    // Setup MDNS
+    //-- Setup MDNS
     setupMDNS();
 
-    // Setup OTA
+    //-- Setup OTA
     setupOTA();
 
-    // Start telnet server
+    //-- Start telnet server
     _telnetServer->begin();
     _telnetServer->setNoDelay(true);
     _multiStream->println("Telnet server started");
@@ -220,18 +220,18 @@ Stream* Networking::begin(const char* hostname, int resetPin
 
 void Networking::loop() 
 {
-    // Handle OTA
+    //-- Handle OTA
     ArduinoOTA.handle();
     
-    // Handle MDNS
+    //-- Handle MDNS
     #ifdef ESP8266
     MDNS.update();
     #endif
 
-    // Handle telnet connections
+    //-- Handle telnet connections
     if (_telnetServer->hasClient()) 
     {
-        // If a client is already connected, disconnect it
+        //-- If a client is already connected, disconnect it
         if (_telnetClient && _telnetClient.connected()) 
         {
             _telnetClient.stop();
@@ -245,47 +245,38 @@ void Networking::loop()
         #endif
     }
 
-    // Handle disconnections
+    //-- Handle disconnections
     if (_telnetClient && !_telnetClient.connected()) 
     {
         _telnetClient.stop();
     }
 }
 
-/*************  ✨ Codeium Command ⭐  *************/
 /**
  * Get the local IP address of the device.
  *
  * @return The local IP address as an IPAddress object.
  */
-
-/******  a2af41ab-50cb-4938-8c90-f4f898856edc  *******/
 IPAddress Networking::getIPAddress() const 
 {
     return WiFi.localIP();
 }
 
-/*************  ✨ Codeium Command ⭐  *************/
 /**
  * Get the local IP address of the device as a string.
  *
  * @return The local IP address as a String object.
  */
-
-/******  5591a419-9c34-42aa-9d62-290adee3e2ef  *******/
 String Networking::getIPAddressString() const 
 {
     return WiFi.localIP().toString();
 }
 
-/*************  ✨ Codeium Command ⭐  *************/
 /**
  * Check if the device is connected to a WiFi network.
  *
  * @return True if the device is connected to a WiFi network, false otherwise.
  */
-
-/******  dea5a555-8eff-4fba-a19c-3692929a8b89  *******/
 bool Networking::isConnected() const 
 {
     return WiFi.status() == WL_CONNECTED;
