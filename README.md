@@ -32,7 +32,7 @@ void setup()
 {
     networking = new Networking();
     
-    // Parameters: hostname, reset pin, serial object, baud rate
+    //-- Parameters: hostname, reset pin, serial object, baud rate
     debug = networking->begin("esp8266", 0, Serial, 115200);
     
     if (!debug)
@@ -43,10 +43,10 @@ void setup()
 
 void loop()
 {
-    // Must be called in main loop
+    //-- Must be called in main loop
     networking->loop();
     
-    // Use debug stream for output
+    //-- Use debug stream for output
     debug->println("Hello World");
 }
 ```
