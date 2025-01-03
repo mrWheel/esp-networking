@@ -12,21 +12,18 @@ void setup()
     
     networking = new Networking();
     #ifdef ESP8266
-    debug = networking->begin("esp8266", 0, Serial, 115200);
+        debug = networking->begin("esp8266", 0, Serial, 115200);
     #else
-    debug = networking->begin("esp32", 0, Serial, 115200);
+        debug = networking->begin("esp32", 0, Serial, 115200);
     #endif
     
     if (!debug) 
     {
-        #ifdef ESP8266
+        //-- if connection fails .. restart
         ESP.restart();
-        #else
-        ESP.restart();
-        #endif
     }
     
-    // Example of using the IP methods
+    //-- Example of using the IP methods
     if (networking->isConnected()) 
     {
         debug->print("Device IP: ");
