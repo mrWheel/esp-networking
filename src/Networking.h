@@ -12,16 +12,16 @@
 #include <StreamString.h>
 #include <ArduinoOTA.h>
 
-class MultiStream : public Stream {
-private:
+class MultiStream : public Stream 
+{
+  private:
     Stream* _serial;
     WiFiClient* _telnetClient;
 
-public:
+  public:
     MultiStream(Stream* serial, WiFiClient* telnetClient) 
         : _serial(serial), _telnetClient(telnetClient) {}
 
-/*************  ✨ Codeium Command ⭐  *************/
     /**
      * Writes a byte to both the serial and telnet client streams.
      *
@@ -29,10 +29,11 @@ public:
      * @return The total number of bytes written to both streams.
      */
 
-/******  7240884f-8f2e-4358-b047-0b5507bbca24  *******/
-    virtual size_t write(uint8_t c) override {
+    virtual size_t write(uint8_t c) override 
+    {
         size_t written = _serial->write(c);
-        if (_telnetClient && _telnetClient->connected()) {
+        if (_telnetClient && _telnetClient->connected())
+        {
             written += _telnetClient->write(c);
         }
         return written;
@@ -46,8 +47,9 @@ public:
     using Print::write;
 };
 
-class Networking {
-private:
+class Networking 
+{
+  private:
     const char* _hostname;
     int _resetPin;
     Stream* _serial;
@@ -64,7 +66,7 @@ private:
     void setupMDNS();
     void setupOTA();
 
-public:
+  public:
     Networking();
     ~Networking();
 
