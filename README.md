@@ -37,7 +37,8 @@ void setup()
     
     if (!debug)
     {
-        ESP.restart(); // Restart if connection fails
+      //-- Restart if connection fails
+      ESP.restart(); 
     }
 }
 
