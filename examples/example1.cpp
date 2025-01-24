@@ -1,10 +1,25 @@
-
 #include "Networking.h"
 
 Networking* networking = nullptr;
 Stream* debug = nullptr;
 
 uint32_t loopCount = 0;
+
+//-- OTA callback functions
+void onOTAStart()
+{
+    debug->println("Custom OTA Start Handler: Preparing for update...");
+}
+
+void onOTAProgress()
+{
+    debug->println("Custom OTA Progress Handler: Another 10% completed");
+}
+
+void onOTAEnd()
+{
+    debug->println("Custom OTA End Handler: Update process finishing...");
+}
 
 void setup() 
 {
@@ -22,6 +37,11 @@ void setup()
         //-- if connection fails .. restart
         ESP.restart();
     }
+    
+    //-- Register OTA callbacks
+    networking->doAtStartOTA(onOTAStart);
+    //networking->doAtProgressOTA(onOTAProgress);
+    networking->doAtEndOTA(onOTAEnd);
     
     //-- Example of using the IP methods
     if (networking->isConnected()) 

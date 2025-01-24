@@ -80,7 +80,8 @@
 //-- Networking implementation
 Networking::Networking() 
     : _hostname(nullptr), _resetPin(-1), _serial(nullptr),
-      _telnetServer(nullptr), _multiStream(nullptr) {}
+      _telnetServer(nullptr), _multiStream(nullptr),
+      _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr) {}
 
 Networking::~Networking() 
 {
@@ -109,6 +110,21 @@ void Networking::setupMDNS()
     }
 }
 
+void Networking::doAtStartOTA(std::function<void()> callback)
+{
+    _onStartOTA = callback;
+}
+
+void Networking::doAtProgressOTA(std::function<void()> callback)
+{
+    _onProgressOTA = callback;
+}
+
+void Networking::doAtEndOTA(std::function<void()> callback)
+{
+    _onEndOTA = callback;
+}
+
 void Networking::setupOTA() 
 {
     //-- Configure ArduinoOTA
@@ -118,16 +134,28 @@ void Networking::setupOTA()
     {
         String type = (ArduinoOTA.getCommand() == U_FLASH) ? "firmware" : "filesystem";
         _multiStream->printf("Start updating %s\n", type.c_str());
+        if (_onStartOTA)
+        {
+            _onStartOTA();
+        }
     });
     
     ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) 
     {
         _multiStream->printf("Progress: %u%%\r", (progress / (total / 100)));
+        if (_onProgressOTA && (progress % (total / 10) < (total / 100)))
+        {
+            _onProgressOTA();
+        }
     });
     
     ArduinoOTA.onEnd([this]() 
     {
         _multiStream->println("\nUpdate complete!");
+        if (_onEndOTA)
+        {
+            _onEndOTA();
+        }
     });
     
     ArduinoOTA.onError([this](ota_error_t error) 

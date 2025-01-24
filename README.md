@@ -9,7 +9,7 @@ A networking solution for ESP8266/ESP32 microcontrollers that simplifies WiFi ma
 - 🔍 **MDNS Support**: Local network device discovery
 - 📡 **Remote Debugging**: Built-in telnet server
 - 📤 **Dual Output**: Combined serial and telnet output streaming
-- 🔌 **Cross-Platform**: Compatible with both ESP8266 and ESP32
+- 🔌 **Cross-Platform**: Compatible with both ESP8266 and ESP32 (but not (yet) for ESP32-S3 boards)
 
 ## Installation
 
@@ -83,6 +83,47 @@ or instead of `device-ip-address` use `mDNSname`.local
    - Multiple debugging sessions supported
    - Automatic session management
 
+## Extended OTA Usage
+
+The library provides callback functions for OTA (Over-The-Air) update events, allowing you to execute custom code at specific points during the update process:
+
+```cpp
+void setup()
+{
+    networking = new Networking();
+    debug = networking->begin("esp8266", 0, Serial, 115200);
+    
+    //-- Register OTA callbacks
+    networking->doAtStartOTA([]() 
+    {
+        //-- Called when OTA update starts
+        digitalWrite(LED_BUILTIN, LOW);  // Turn on LED
+        debug->println("OTA update starting...");
+    });
+    
+    networking->doAtProgressOTA([]() 
+    {
+        //-- Called at every 10% progress
+        digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));  // Toggle LED
+        debug->println("OTA: Another 10% completed");
+    });
+    
+    networking->doAtEndOTA([]() 
+    {
+        //-- Called when OTA update is about to end
+        digitalWrite(LED_BUILTIN, HIGH);  // Turn off LED
+        debug->println("OTA update finishing...");
+    });
+}
+```
+
+These callbacks enable you to:
+- Prepare your device when an update starts (e.g., save critical data, stop ongoing operations)
+- Monitor progress at 10% intervals (e.g., update a display, toggle indicators)
+- Perform cleanup operations before the update completes
+- Provide visual feedback during updates using LEDs or displays
+- Log update progress to external systems or storage
+
 ## Network Status
 
 ```cpp
@@ -142,6 +183,26 @@ Returns the current IP address as an IPAddress object
 String getIPAddressString() const;
 ```
 Returns the current IP address as a string
+
+### OTA Callback Methods
+
+#### doAtStartOTA()
+```cpp
+void doAtStartOTA(std::function<void()> callback);
+```
+Registers a callback function that is called when an OTA update starts
+
+#### doAtProgressOTA()
+```cpp
+void doAtProgressOTA(std::function<void()> callback);
+```
+Registers a callback function that is called at every 10% progress during OTA update
+
+#### doAtEndOTA()
+```cpp
+void doAtEndOTA(std::function<void()> callback);
+```
+Registers a callback function that is called when an OTA update is about to end
 
 ## Automatic Features
 

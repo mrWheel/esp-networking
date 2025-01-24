@@ -11,6 +11,7 @@
 #include <WiFiManager.h>
 #include <StreamString.h>
 #include <ArduinoOTA.h>
+#include <functional>
 
 class MultiStream : public Stream 
 {
@@ -65,6 +66,9 @@ class Networking
 
     void setupMDNS();
     void setupOTA();
+    std::function<void()> _onStartOTA;
+    std::function<void()> _onProgressOTA;
+    std::function<void()> _onEndOTA;
 
   public:
     Networking();
@@ -77,4 +81,8 @@ class Networking
     IPAddress getIPAddress() const;
     String getIPAddressString() const;
     bool isConnected() const;
+
+    void doAtStartOTA(std::function<void()> callback);
+    void doAtProgressOTA(std::function<void()> callback);
+    void doAtEndOTA(std::function<void()> callback);
 };
