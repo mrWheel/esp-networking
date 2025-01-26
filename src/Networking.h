@@ -87,4 +87,15 @@ class Networking
     void doAtProgressOTA(std::function<void()> callback);
     void doAtEndOTA(std::function<void()> callback);
     void doAtWiFiPortalStart(std::function<void()> callback);
+
+    // NTP Methods
+    bool ntpStart(const char* posixString, const char** ntpServers = nullptr);
+    time_t ntpGetEpoch(const char* posixString = nullptr);
+    const char* ntpGetData(const char* posixString = nullptr);
+    const char* ntpGetTime(const char* posixString = nullptr);
+    const char* ntpGetDateTime(const char* posixString = nullptr);
+    struct tm ntpGetTmStruct(const char* posixString = nullptr);
+
+  private:
+    const char* _posixString;
 };

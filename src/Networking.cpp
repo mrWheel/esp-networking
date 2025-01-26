@@ -13,6 +13,12 @@
 *
 * Basic Setup:
 *   #include "Networking.h"
+#include <time.h>
+
+#ifdef ESP8266
+    #include <TZ.h>
+    #include <coredecls.h>
+#endif
 *
 *   Networking* networking = nullptr;
 *   Stream* debug = nullptr;
@@ -89,7 +95,7 @@ Networking::Networking()
     : _hostname(nullptr), _resetPin(-1), _serial(nullptr),
       _telnetServer(nullptr), _multiStream(nullptr),
       _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr),
-      _onWiFiPortalStart(nullptr) {}
+      _onWiFiPortalStart(nullptr), _posixString(nullptr) {}
 
 Networking::~Networking() 
 {
@@ -329,4 +335,99 @@ String Networking::getIPAddressString() const
 bool Networking::isConnected() const 
 {
     return WiFi.status() == WL_CONNECTED;
+}
+
+bool Networking::ntpStart(const char* posixString, const char** ntpServers)
+{
+    if (!isConnected())
+    {
+        return false;
+    }
+
+    _posixString = posixString;
+    
+    #ifdef ESP8266
+        if (ntpServers == nullptr)
+        {
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        }
+        else
+        {
+            configTime(0, 0, "pool.ntp.org", ntpServers[0]);
+        }
+    #else
+        // ESP32 uses configTzTime
+        configTzTime(posixString, "pool.ntp.org", ntpServers ? ntpServers[0] : "time.nist.gov");
+    #endif
+    
+    setenv("TZ", posixString, 1);
+    tzset();
+
+    return true;
+}
+
+time_t Networking::ntpGetEpoch(const char* posixString)
+{
+    if (posixString)
+    {
+        setenv("TZ", posixString, 1);
+        tzset();
+    }
+    else if (!_posixString)
+    {
+        return 0;
+    }
+
+    return time(nullptr);
+}
+
+const char* Networking::ntpGetData(const char* posixString)
+{
+    static char buffer[32];
+    time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d", localtime(&now));
+    return buffer;
+}
+
+const char* Networking::ntpGetTime(const char* posixString)
+{
+    static char buffer[32];
+    time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
+    strftime(buffer, sizeof(buffer), "%H:%M:%S", localtime(&now));
+    return buffer;
+}
+
+const char* Networking::ntpGetDateTime(const char* posixString)
+{
+    static char buffer[32];
+    time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    return buffer;
+}
+
+struct tm Networking::ntpGetTmStruct(const char* posixString)
+{
+    time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        struct tm empty = {};
+        return empty;
+    }
+    
+    return *localtime(&now);
 }
