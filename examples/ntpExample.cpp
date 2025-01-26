@@ -8,11 +8,11 @@ Stream* debug = nullptr;
 void showTime()
 {
     //-- Get and print current date
-    debug->print("\r\nCurrent Date: ");
+    debug->print("\r\nCurrent Date         : ");
     debug->println(networking->ntpGetData());
     
     //-- Get and print current time
-    debug->print("Current Time: ");
+    debug->print("Current Time         : ");
     debug->println(networking->ntpGetTime());
     
     //-- Get and print current date and time
@@ -34,7 +34,7 @@ void showTime()
     debug->printf("Second: %2d\n", timeInfo.tm_sec);
     
     //-- Example with different timezone (New York)
-    debug->println("\nNew York Time:");
+    debug->print("\nNew York Time        : ");
     debug->println(networking->ntpGetDateTime("EST5EDT,M3.2.0,M11.1.0"));
 
 }
@@ -74,11 +74,13 @@ void loop()
     //-- Must be called in main loop
     networking->loop();
     
-    //-- Print current time every 10 seconds
+    //-- Print current time every 5 seconds
     static unsigned long lastPrint = 0;
     if (millis() - lastPrint >= 5000)
     {
-      showTime();
+      if (networking->ntpIsValid())
+           showTime();
+      else debug->println("NTP is not valid");
       lastPrint = millis();
     }
 }

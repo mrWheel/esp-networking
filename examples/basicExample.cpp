@@ -13,7 +13,7 @@ void onOTAStart()
 
 void onOTAProgress()
 {
-    debug->println("Custom OTA Progress Handler: Another 10% completed");
+    debug->println("Custom OTA Progress Handler: Another 20% completed");
 }
 
 void onOTAEnd()
@@ -51,7 +51,7 @@ void setup()
     
     //-- Register OTA callbacks
     networking->doAtStartOTA(onOTAStart);
-    //networking->doAtProgressOTA(onOTAProgress);
+    networking->doAtProgressOTA(onOTAProgress);
     networking->doAtEndOTA(onOTAEnd);
     
     //-- Example of using the IP methods

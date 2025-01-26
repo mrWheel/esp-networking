@@ -10,15 +10,10 @@
 *   MDNS for local network discovery
 *   Built-in telnet server for remote debugging
 *   Combined serial and telnet output streaming
+*   Automatic NTP time synchronization
 *
 * Basic Setup:
 *   #include "Networking.h"
-#include <time.h>
-
-#ifdef ESP8266
-    #include <TZ.h>
-    #include <coredecls.h>
-#endif
 *
 *   Networking* networking = nullptr;
 *   Stream* debug = nullptr;
@@ -34,7 +29,7 @@
 *           Serial.println("WiFi configuration portal started");
 *       });
 *    
-*       //-- Parameters: hostname, reset pin, serial object, baud rate
+*       //-- Parameters: hostname, resetWiFi pin, serial object, baud rate
 *       debug = networking->begin("esp8266", 0, Serial, 115200);
 *    
 *       if (!debug) 
@@ -56,7 +51,7 @@
 * WiFi Configuration:
 *   First boot: Creates an access point named by hostname
 *   Connect to this AP to configure WiFi credentials
-*   Hold reset pin LOW during boot to clear WiFi settings
+*   Hold 'resetWiFi' pin LOW during boot to clear WiFi settings
 *
 * Remote Debug:
 *   Telnet server runs on port 23
@@ -85,6 +80,22 @@
 *   MDNS for network discovery
 *   OTA update capability
 *   Combined serial/telnet output streaming
+*   Automatic NTP time synchronization
+*
+* NTP Time Management:
+*   ntpStart(): Initializes NTP with timezone and optional custom servers
+*   ntpIsValid(): Checks if valid time is available
+*   ntpGetEpoch(): Get current epoch time
+*   ntpGetData(): Get current date (YYYY-MM-DD)
+*   ntpGetTime(): Get current time (HH:MM:SS)
+*   ntpGetDateTime(): Get current date and time (YYYY-MM-DD HH:MM:SS)
+*   ntpGetTmStruct(): Get time as tm struct
+*
+* Time synchronization:
+*   - Initial sync done in ntpStart()
+*   - Automatic hourly sync in background
+*   - Timezone support using POSIX timezone strings
+*   - Temporary timezone changes without affecting default
 *
 ********************************************************************************/
 
@@ -92,10 +103,10 @@
 
 //-- Networking implementation
 Networking::Networking() 
-    : _hostname(nullptr), _resetPin(-1), _serial(nullptr),
+    : _hostname(nullptr), _resetWiFiPin(-1), _serial(nullptr),
       _telnetServer(nullptr), _multiStream(nullptr),
       _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr),
-      _onWiFiPortalStart(nullptr), _posixString(nullptr) {}
+      _onWiFiPortalStart(nullptr), _posixString(nullptr), _lastNtpSync(0) {}
 
 Networking::~Networking() 
 {
@@ -162,7 +173,7 @@ void Networking::setupOTA()
     ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) 
     {
         _multiStream->printf("Progress: %u%%\r", (progress / (total / 100)));
-        if (_onProgressOTA && (progress % (total / 10) < (total / 100)))
+        if (_onProgressOTA && (progress % (total / 5) < (total / 100)))
         {
             _onProgressOTA();
         }
@@ -203,12 +214,12 @@ void Networking::setupOTA()
     _multiStream->println("OTA ready");
 }
 
-Stream* Networking::begin(const char* hostname, int resetPin
+Stream* Networking::begin(const char* hostname, int resetWiFiPin
                             , HardwareSerial& serial, long serialSpeed
                             , std::function<void()> wifiCallback) 
 {
     _hostname = hostname;
-    _resetPin = resetPin;
+    _resetWiFiPin = resetWiFiPin;
     _serial = &serial;
     
     //-- Initialize Serial
@@ -222,10 +233,10 @@ Stream* Networking::begin(const char* hostname, int resetPin
     _multiStream = new MultiStream(&serial, &_telnetClient);
     
     //-- Initialize reset pin
-    pinMode(_resetPin, INPUT_PULLUP);
+    pinMode(_resetWiFiPin, INPUT_PULLUP);
 
     //-- Check if reset is requested
-    if (digitalRead(_resetPin) == LOW) 
+    if (digitalRead(_resetWiFiPin) == LOW) 
     {
         _multiStream->println("Reset button pressed, clearing WiFi settings...");
         WiFiManager wifiManager;
@@ -305,6 +316,17 @@ void Networking::loop()
     {
         _telnetClient.stop();
     }
+
+    //-- Periodic NTP sync
+    if (_posixString && (millis() - _lastNtpSync >= NTP_SYNC_INTERVAL))
+    {
+        #ifdef ESP8266
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        #else
+            configTzTime(_posixString, "pool.ntp.org", "time.nist.gov");
+        #endif
+        _lastNtpSync = millis();
+    }
 }
 
 /**
@@ -337,6 +359,11 @@ bool Networking::isConnected() const
     return WiFi.status() == WL_CONNECTED;
 }
 
+bool Networking::ntpIsValid() const
+{
+    return time(nullptr) > 1000000;
+}
+
 bool Networking::ntpStart(const char* posixString, const char** ntpServers)
 {
     if (!isConnected())
@@ -363,7 +390,19 @@ bool Networking::ntpStart(const char* posixString, const char** ntpServers)
     setenv("TZ", posixString, 1);
     tzset();
 
-    return true;
+    // Wait up to 5 seconds for time sync
+    int retries = 50;
+    while (time(nullptr) < 1000000 && retries-- > 0)
+    {
+        delay(100);
+    }
+
+    if (time(nullptr) > 1000000)
+    {
+        _lastNtpSync = millis();
+        return true;
+    }
+    return false;
 }
 
 time_t Networking::ntpGetEpoch(const char* posixString)
@@ -376,6 +415,11 @@ time_t Networking::ntpGetEpoch(const char* posixString)
     else if (!_posixString)
     {
         return 0;
+    }
+    else
+    {
+        setenv("TZ", _posixString, 1); // Reset to default timezone
+        tzset();
     }
 
     return time(nullptr);
