@@ -9,7 +9,7 @@ A networking solution for ESP8266/ESP32 microcontrollers that simplifies WiFi ma
 - 🔍 **MDNS Support**: Local network device discovery
 - 📡 **Remote Debugging**: Built-in telnet server
 - 📤 **Dual Output**: Combined serial and telnet output streaming
-- 🔌 **Cross-Platform**: Compatible with both ESP8266 and ESP32 (but not (yet) for ESP32-S3 boards)
+- 🔌 **Cross-Platform**: Compatible with both ESP8266 and ESP32 
 
 ## Installation
 
@@ -83,9 +83,9 @@ or instead of `device-ip-address` use `mDNSname`.local
    - Multiple debugging sessions supported
    - Automatic session management
 
-## Extended OTA Usage
+## Extended OTA and WiFiManager Usage
 
-The library provides callback functions for OTA (Over-The-Air) update events, allowing you to execute custom code at specific points during the update process:
+The library provides callback functions for OTA (Over-The-Air) update events and WiFiManager portal activation, allowing you to execute custom code at specific points:
 
 ```cpp
 void setup()
@@ -113,6 +113,14 @@ void setup()
         //-- Called when OTA update is about to end
         digitalWrite(LED_BUILTIN, HIGH);  // Turn off LED
         debug->println("OTA update finishing...");
+    });
+
+    //-- Register WiFiManager callback
+    networking->doAtWiFiPortalStart([]() 
+    {
+        //-- Called when WiFiManager portal is started (no valid SSID found)
+        digitalWrite(LED_BUILTIN, LOW);  // Turn on LED
+        debug->println("WiFi configuration portal started");
     });
 }
 ```
@@ -147,11 +155,17 @@ Networking();
 ```cpp
 Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed);
 ```
+or
+```cpp
+Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed,
+                                                       std::function<void()> wifiPortalStart);
+```
 Initializes the networking features:
 - `hostname`: Device name for network identification
 - `resetPin`: GPIO pin for WiFi reset functionality
 - `serial`: Serial interface for debugging
 - `serialSpeed`: Baud rate for serial communication
+- `wifiPortalStart`: Sets callback function if WiFi Portal starts
 - Returns: Stream object for debug output
 
 #### loop()
@@ -184,7 +198,7 @@ String getIPAddressString() const;
 ```
 Returns the current IP address as a string
 
-### OTA Callback Methods
+### OTA and WiFiManager Callback Methods
 
 #### doAtStartOTA()
 ```cpp
@@ -203,6 +217,12 @@ Registers a callback function that is called at every 10% progress during OTA up
 void doAtEndOTA(std::function<void()> callback);
 ```
 Registers a callback function that is called when an OTA update is about to end
+
+#### doAtWiFiPortalStart()
+```cpp
+void doAtWiFiPortalStart(std::function<void()> callback);
+```
+Registers a callback function that is called when WiFiManager portal is started (no valid SSID found)
 
 ## Automatic Features
 

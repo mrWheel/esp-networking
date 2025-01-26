@@ -9,7 +9,7 @@
 *   OTA (Over-The-Air) updates support
 *   MDNS for local network discovery
 *   Built-in telnet server for remote debugging
-*  Combined serial and telnet output streaming
+*   Combined serial and telnet output streaming
 *
 * Basic Setup:
 *   #include "Networking.h"
@@ -20,6 +20,13 @@
 *   void setup() 
 *   {
 *       networking = new Networking();
+*    
+*       //-- Optional: Register WiFiManager callback for when portal starts
+*       networking->doAtWiFiPortalStart([]() 
+*       {
+*           digitalWrite(LED_BUILTIN, LOW);  // Turn on LED
+*           Serial.println("WiFi configuration portal started");
+*       });
 *    
 *       //-- Parameters: hostname, reset pin, serial object, baud rate
 *       debug = networking->begin("esp8266", 0, Serial, 115200);
@@ -60,7 +67,7 @@
 *   }
 *
 * Important Methods:
-*   begin(): Initializes networking with hostname and serial settings
+*   begin(): Initializes networking with hostname, reset pin, serial settings and portalCallBack function
 *   loop(): Handles network events, must be called in main loop
 *   isConnected(): Checks WiFi connection status
 *   getIPAddress(): Returns IP as IPAddress object
@@ -71,7 +78,7 @@
 *   Telnet server for remote debugging
 *   MDNS for network discovery
 *   OTA update capability
-*  Combined serial/telnet output streaming
+*   Combined serial/telnet output streaming
 *
 ********************************************************************************/
 
@@ -81,7 +88,8 @@
 Networking::Networking() 
     : _hostname(nullptr), _resetPin(-1), _serial(nullptr),
       _telnetServer(nullptr), _multiStream(nullptr),
-      _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr) {}
+      _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr),
+      _onWiFiPortalStart(nullptr) {}
 
 Networking::~Networking() 
 {
@@ -123,6 +131,11 @@ void Networking::doAtProgressOTA(std::function<void()> callback)
 void Networking::doAtEndOTA(std::function<void()> callback)
 {
     _onEndOTA = callback;
+}
+
+void Networking::doAtWiFiPortalStart(std::function<void()> callback)
+{
+    _onWiFiPortalStart = callback;
 }
 
 void Networking::setupOTA() 
@@ -185,7 +198,8 @@ void Networking::setupOTA()
 }
 
 Stream* Networking::begin(const char* hostname, int resetPin
-                            , HardwareSerial& serial, long serialSpeed) 
+                            , HardwareSerial& serial, long serialSpeed
+                            , std::function<void()> wifiCallback) 
 {
     _hostname = hostname;
     _resetPin = resetPin;
@@ -220,6 +234,16 @@ Stream* Networking::begin(const char* hostname, int resetPin
     #else
         WiFi.setHostname(_hostname);
     #endif
+
+    if (wifiCallback)
+    {
+        _onWiFiPortalStart = wifiCallback;
+        wifiManager.setAPCallback([this](WiFiManager* mgr) 
+        {
+            //-- WiFiManager callback function is given
+            _onWiFiPortalStart();
+        });
+    }
 
     //-- Try to connect to WiFi or start config portal
     if (!wifiManager.autoConnect(_hostname)) 

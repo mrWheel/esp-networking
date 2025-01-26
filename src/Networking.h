@@ -69,12 +69,13 @@ class Networking
     std::function<void()> _onStartOTA;
     std::function<void()> _onProgressOTA;
     std::function<void()> _onEndOTA;
+    std::function<void()> _onWiFiPortalStart;
 
   public:
     Networking();
     ~Networking();
 
-    Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed);
+    Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed, std::function<void()> wifiCallback = nullptr);
     void loop();
     
     // IP address methods
@@ -85,4 +86,5 @@ class Networking
     void doAtStartOTA(std::function<void()> callback);
     void doAtProgressOTA(std::function<void()> callback);
     void doAtEndOTA(std::function<void()> callback);
+    void doAtWiFiPortalStart(std::function<void()> callback);
 };
