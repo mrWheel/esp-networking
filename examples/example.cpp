@@ -21,15 +21,26 @@ void onOTAEnd()
     debug->println("Custom OTA End Handler: Update process finishing...");
 }
 
+void wifiPortalCallBack()
+{
+    Serial.println("#============================#");
+    Serial.println("# WiFiManager PortalCallBack #");
+    Serial.println("#============================#");
+}
+
+
 void setup() 
 {
+    Serial.begin(115200);
     delay(5000);
+
+    pinMode(0, INPUT_PULLUP);
     
     networking = new Networking();
     #ifdef ESP8266
-        debug = networking->begin("esp8266", 0, Serial, 115200);
+        debug = networking->begin("esp8266", 0, Serial, 115200, wifiPortalCallBack);
     #else
-        debug = networking->begin("esp32", 0, Serial, 115200);
+        debug = networking->begin("esp32", 0, Serial, 115200, wifiPortalCallBack);
     #endif
     
     if (!debug) 
