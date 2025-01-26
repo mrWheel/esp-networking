@@ -9,7 +9,8 @@ A networking solution for ESP8266/ESP32 microcontrollers that simplifies WiFi ma
 - 🔍 **MDNS Support**: Local network device discovery
 - 📡 **Remote Debugging**: Built-in telnet server
 - 📤 **Dual Output**: Combined serial and telnet output streaming
-- 🔌 **Cross-Platform**: Compatible with both ESP8266 and ESP32 
+- 🔌 **Cross-Platform**: Compatible with both ESP8266 and ESP32
+- ⏰ **Time Management**: Automatic NTP synchronization with timezone support
 
 ## Installation
 
@@ -32,7 +33,7 @@ void setup()
 {
     networking = new Networking();
     
-    //-- Parameters: hostname, reset pin, serial object, baud rate
+    //-- Parameters: hostname, resetWiFi pin, serial object, baud rate
     debug = networking->begin("esp8266", 0, Serial, 115200);
     
     if (!debug)
@@ -60,7 +61,7 @@ void loop()
    - Configure your WiFi credentials through the captive portal
 
 2. **Reset WiFi Settings**:
-   - Hold the `resetPin` LOW during boot
+   - Hold the `resetWiFiPin` LOW during boot
    - WiFi settings will be cleared
    - Device will return to AP mode for reconfiguration
 
@@ -103,9 +104,9 @@ void setup()
     
     networking->doAtProgressOTA([]() 
     {
-        //-- Called at every 10% progress
+        //-- Called at every 20% progress
         digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));  // Toggle LED
-        debug->println("OTA: Another 10% completed");
+        debug->println("OTA: Another 20% completed");
     });
     
     networking->doAtEndOTA([]() 
@@ -127,7 +128,7 @@ void setup()
 
 These callbacks enable you to:
 - Prepare your device when an update starts (e.g., save critical data, stop ongoing operations)
-- Monitor progress at 10% intervals (e.g., update a display, toggle indicators)
+- Monitor progress at 20% intervals (e.g., update a display, toggle indicators)
 - Perform cleanup operations before the update completes
 - Provide visual feedback during updates using LEDs or displays
 - Log update progress to external systems or storage
@@ -141,6 +142,53 @@ if (networking->isConnected())
     debug->println(networking->getIPAddressString());
 }
 ```
+
+## NTP Time Management
+
+The library provides comprehensive NTP (Network Time Protocol) functionality with automatic synchronization:
+
+```cpp
+void setup()
+{
+    networking = new Networking();
+    debug = networking->begin("esp32", 0, Serial, 115200);
+    
+    //-- Start NTP with Amsterdam timezone
+    if (networking->ntpStart("CET-1CEST,M3.5.0,M10.5.0/3"))
+    {
+        debug->println("NTP started successfully");
+    }
+
+    //-- Optional: Use custom NTP servers
+    const char* ntpServers[] = {"time.google.com", "time.cloudflare.com", nullptr};
+    networking->ntpStart("CET-1CEST,M3.5.0,M10.5.0/3", ntpServers);
+}
+
+void loop()
+{
+    networking->loop();  // Handles automatic hourly NTP sync
+
+    if (networking->ntpIsValid())
+    {
+        debug->print("Current time: ");
+        debug->println(networking->ntpGetDateTime());
+    }
+}
+```
+
+### Features:
+- Automatic hourly synchronization
+- Timezone support using POSIX timezone strings
+- Support for custom NTP servers
+- Temporary timezone changes without affecting default
+- Various time format outputs (epoch, date, time, datetime)
+
+### Time Zones
+Time zones are specified using POSIX timezone strings. Common examples:
+- Central European Time: "CET-1CEST,M3.5.0,M10.5.0/3"
+- Eastern Time: "EST5EDT,M3.2.0,M11.1.0"
+- UTC: "UTC0"
+- Japan: "JST-9"
 
 ## API Reference
 
@@ -177,6 +225,7 @@ Must be called in the main loop to handle:
 - MDNS updates
 - Telnet connections
 - Network events
+- NTP synchronization
 
 ### Status Methods
 
@@ -198,6 +247,53 @@ String getIPAddressString() const;
 ```
 Returns the current IP address as a string
 
+### NTP Methods
+
+#### ntpStart()
+```cpp
+bool ntpStart(const char* posixString, const char** ntpServers = nullptr);
+```
+Initializes NTP with timezone and optional custom servers:
+- `posixString`: POSIX timezone string
+- `ntpServers`: Optional array of custom NTP server addresses
+- Returns: true if time sync successful
+
+#### ntpIsValid()
+```cpp
+bool ntpIsValid() const;
+```
+Returns true if valid time is available from NTP
+
+#### ntpGetEpoch()
+```cpp
+time_t ntpGetEpoch(const char* posixString = nullptr);
+```
+Returns current epoch time, optionally in a different timezone
+
+#### ntpGetData()
+```cpp
+const char* ntpGetData(const char* posixString = nullptr);
+```
+Returns current date (YYYY-MM-DD)
+
+#### ntpGetTime()
+```cpp
+const char* ntpGetTime(const char* posixString = nullptr);
+```
+Returns current time (HH:MM:SS)
+
+#### ntpGetDateTime()
+```cpp
+const char* ntpGetDateTime(const char* posixString = nullptr);
+```
+Returns current date and time (YYYY-MM-DD HH:MM:SS)
+
+#### ntpGetTmStruct()
+```cpp
+struct tm ntpGetTmStruct(const char* posixString = nullptr);
+```
+Returns time as tm struct for custom formatting
+
 ### OTA and WiFiManager Callback Methods
 
 #### doAtStartOTA()
@@ -210,7 +306,7 @@ Registers a callback function that is called when an OTA update starts
 ```cpp
 void doAtProgressOTA(std::function<void()> callback);
 ```
-Registers a callback function that is called at every 10% progress during OTA update
+Registers a callback function that is called at every 20% progress during OTA update
 
 #### doAtEndOTA()
 ```cpp
@@ -232,6 +328,7 @@ The library handles these features automatically:
 - MDNS for network discovery
 - OTA update capability
 - Combined serial/telnet output streaming
+- Hourly NTP time synchronization
 
 ## License
 

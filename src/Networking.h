@@ -20,6 +20,13 @@ class MultiStream : public Stream
     WiFiClient* _telnetClient;
 
   public:
+    /**
+     * MultiStream is a wrapper for a Stream object that writes to both a local
+     * serial interface and a remote telnet client.
+     *
+     * @param serial The local serial interface to write to.
+     * @param telnetClient The remote telnet client to write to.
+     */
     MultiStream(Stream* serial, WiFiClient* telnetClient) 
         : _serial(serial), _telnetClient(telnetClient) {}
 
@@ -30,6 +37,12 @@ class MultiStream : public Stream
      * @return The total number of bytes written to both streams.
      */
 
+    /**
+     * Writes a byte to both the serial and telnet client streams.
+     *
+     * @param c The byte to be written.
+     * @return The total number of bytes written to both streams.
+     */
     virtual size_t write(uint8_t c) override 
     {
         size_t written = _serial->write(c);
@@ -52,7 +65,7 @@ class Networking
 {
   private:
     const char* _hostname;
-    int _resetPin;
+    int _resetWiFiPin;
     Stream* _serial;
     WiFiServer* _telnetServer;
     WiFiClient _telnetClient;
@@ -75,7 +88,7 @@ class Networking
     Networking();
     ~Networking();
 
-    Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed, std::function<void()> wifiCallback = nullptr);
+    Stream* begin(const char* hostname, int resetWiFiPin, HardwareSerial& serial, long serialSpeed, std::function<void()> wifiCallback = nullptr);
     void loop();
     
     // IP address methods
@@ -87,4 +100,18 @@ class Networking
     void doAtProgressOTA(std::function<void()> callback);
     void doAtEndOTA(std::function<void()> callback);
     void doAtWiFiPortalStart(std::function<void()> callback);
+
+    // NTP Methods
+    bool ntpStart(const char* posixString, const char** ntpServers = nullptr);
+    bool ntpIsValid() const;
+    time_t ntpGetEpoch(const char* posixString = nullptr);
+    const char* ntpGetData(const char* posixString = nullptr);
+    const char* ntpGetTime(const char* posixString = nullptr);
+    const char* ntpGetDateTime(const char* posixString = nullptr);
+    struct tm ntpGetTmStruct(const char* posixString = nullptr);
+
+  private:
+    const char* _posixString;
+    unsigned long _lastNtpSync;
+    static const unsigned long NTP_SYNC_INTERVAL = 3600000; // 1 hour in milliseconds
 };
