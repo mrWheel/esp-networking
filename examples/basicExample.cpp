@@ -1,3 +1,4 @@
+
 #include "Networking.h"
 
 Networking* networking = nullptr;
@@ -48,6 +49,11 @@ void setup()
         //-- if connection fails .. restart
         ESP.restart();
     }
+  #ifdef USE_ASYNC_WIFIMANAGER
+    debug->println("AsyncWiFiManager is enabled");
+  #else
+    debug->println("AsyncWiFiManager is disabled");
+  #endif
     
     //-- Register OTA callbacks
     networking->doAtStartOTA(onOTAStart);
