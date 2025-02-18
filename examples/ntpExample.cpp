@@ -59,6 +59,12 @@ void setup()
         ESP.restart(); // Restart if connection fails
     }
 
+    #ifdef USE_ASYNC_WIFIMANAGER
+    debug->println("\nAsyncWiFiManager is enabled\n");
+#else
+    debug->println("\nAsyncWiFiManager is disabled\n");
+#endif
+
     //-- Define custom NTP servers (optional)
     const char* ntpServers[] = {"time.google.com", "time.cloudflare.com", nullptr};
 

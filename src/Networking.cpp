@@ -102,12 +102,24 @@
 #include "Networking.h"
 
 //-- Networking implementation
+/**
+ * Constructor for the Networking class.
+ * Initializes all member variables to their default values.
+ */
 Networking::Networking() 
     : _hostname(nullptr), _resetWiFiPin(-1), _serial(nullptr),
       _telnetServer(nullptr), _multiStream(nullptr),
       _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr),
-      _onWiFiPortalStart(nullptr), _posixString(nullptr), _lastNtpSync(0) {}
+      _onWiFiPortalStart(nullptr), _posixString(nullptr), _lastNtpSync(0)
+      #ifdef USE_ASYNC_WIFIMANAGER
+      , _webServer(nullptr), _dnsServer(nullptr)
+      #endif
+{}
 
+/**
+ * Destructor for the Networking class.
+ * Cleans up dynamically allocated resources.
+ */
 Networking::~Networking() 
 {
     if (_telnetServer) 
@@ -118,8 +130,22 @@ Networking::~Networking()
     {
         delete _multiStream;
     }
+    #ifdef USE_ASYNC_WIFIMANAGER
+    if (_webServer)
+    {
+        delete _webServer;
+    }
+    if (_dnsServer)
+    {
+        delete _dnsServer;
+    }
+    #endif
 }
 
+/**
+ * Sets up Multicast DNS (mDNS) for the device.
+ * Enables service discovery for telnet and OTA updates.
+ */
 void Networking::setupMDNS() 
 {
     if (MDNS.begin(_hostname)) 
@@ -135,26 +161,50 @@ void Networking::setupMDNS()
     }
 }
 
+/**
+ * Sets a callback function to be executed when OTA update starts.
+ * 
+ * @param callback Function to be called at the start of OTA update
+ */
 void Networking::doAtStartOTA(std::function<void()> callback)
 {
     _onStartOTA = callback;
 }
 
+/**
+ * Sets a callback function to be executed during OTA update progress.
+ * 
+ * @param callback Function to be called during OTA update progress
+ */
 void Networking::doAtProgressOTA(std::function<void()> callback)
 {
     _onProgressOTA = callback;
 }
 
+/**
+ * Sets a callback function to be executed when OTA update completes.
+ * 
+ * @param callback Function to be called at the end of OTA update
+ */
 void Networking::doAtEndOTA(std::function<void()> callback)
 {
     _onEndOTA = callback;
 }
 
+/**
+ * Sets a callback function to be executed when WiFi configuration portal starts.
+ * 
+ * @param callback Function to be called when WiFi portal starts
+ */
 void Networking::doAtWiFiPortalStart(std::function<void()> callback)
 {
     _onWiFiPortalStart = callback;
 }
 
+/**
+ * Configures Over-The-Air (OTA) update functionality.
+ * Sets up callbacks for different OTA events and initializes the OTA system.
+ */
 void Networking::setupOTA() 
 {
     //-- Configure ArduinoOTA
@@ -214,6 +264,17 @@ void Networking::setupOTA()
     _multiStream->println("OTA ready");
 }
 
+/**
+ * Initializes the networking functionality.
+ * Sets up WiFi, MDNS, OTA updates, and telnet server.
+ * 
+ * @param hostname Device hostname for network identification
+ * @param resetWiFiPin GPIO pin for WiFi settings reset
+ * @param serial Hardware serial interface for debugging
+ * @param serialSpeed Baud rate for serial communication
+ * @param wifiCallback Optional callback for WiFi portal events
+ * @return Pointer to Stream object for debug output, nullptr if initialization fails
+ */
 Stream* Networking::begin(const char* hostname, int resetWiFiPin
                             , HardwareSerial& serial, long serialSpeed
                             , std::function<void()> wifiCallback) 
@@ -239,15 +300,25 @@ Stream* Networking::begin(const char* hostname, int resetWiFiPin
     if (digitalRead(_resetWiFiPin) == LOW) 
     {
         _multiStream->println("Reset button pressed, clearing WiFi settings...");
-        WiFiManager wifiManager;
+        #ifdef USE_ASYNC_WIFIMANAGER
+        AsyncWiFiManager wifiManager(_webServer, _dnsServer);
         wifiManager.resetSettings();
+        #else
+        ::WiFiManager wifiManager;
+        wifiManager.resetSettings();
+        #endif
         _multiStream->println("Settings cleared!");
     }
 
-    //-- Initialize WiFiManager
-    WiFiManager wifiManager;
+    #ifdef USE_ASYNC_WIFIMANAGER
+    //-- Initialize AsyncWebServer and DNSServer
+    _webServer = new AsyncWebServer(80);
+    _dnsServer = new DNSServer();
+
+    //-- Initialize AsyncWiFiManager
+    AsyncWiFiManager wifiManager(_webServer, _dnsServer);
     #ifdef ESP8266
-        wifiManager.setHostname(_hostname);
+        WiFi.hostname(_hostname);
     #else
         WiFi.setHostname(_hostname);
     #endif
@@ -255,7 +326,7 @@ Stream* Networking::begin(const char* hostname, int resetWiFiPin
     if (wifiCallback)
     {
         _onWiFiPortalStart = wifiCallback;
-        wifiManager.setAPCallback([this](WiFiManager* mgr) 
+        wifiManager.setAPCallback([this](AsyncWiFiManager* mgr) 
         {
             //-- WiFiManager callback function is given
             _onWiFiPortalStart();
@@ -269,6 +340,33 @@ Stream* Networking::begin(const char* hostname, int resetWiFiPin
         delay(3000);
         return nullptr;
     }
+    #else
+    //-- Initialize WiFiManager
+    ::WiFiManager wifiManager;
+    #ifdef ESP8266
+        WiFi.hostname(_hostname);
+    #else
+        WiFi.setHostname(_hostname);
+    #endif
+
+    if (wifiCallback)
+    {
+        _onWiFiPortalStart = wifiCallback;
+        wifiManager.setAPCallback([this](::WiFiManager* mgr) 
+        {
+            //-- WiFiManager callback function is given
+            _onWiFiPortalStart();
+        });
+    }
+
+    //-- Try to connect to WiFi or start config portal
+    if (!wifiManager.autoConnect(_hostname)) 
+    {
+        _multiStream->println("Failed to connect and hit timeout");
+        delay(3000);
+        return nullptr;
+    }
+    #endif
 
     _multiStream->println("Connected to WiFi!");
     _multiStream->print("IP address: ");
@@ -288,6 +386,10 @@ Stream* Networking::begin(const char* hostname, int resetWiFiPin
     return _multiStream;
 }
 
+/**
+ * Main loop function for handling network events.
+ * Manages OTA updates, MDNS, telnet connections, and NTP synchronization.
+ */
 void Networking::loop() 
 {
     //-- Handle OTA
@@ -359,11 +461,23 @@ bool Networking::isConnected() const
     return WiFi.status() == WL_CONNECTED;
 }
 
+/**
+ * Checks if the current NTP time is valid.
+ * 
+ * @return True if NTP time is valid, false otherwise
+ */
 bool Networking::ntpIsValid() const
 {
     return time(nullptr) > 1000000;
 }
 
+/**
+ * Initializes NTP time synchronization.
+ * 
+ * @param posixString POSIX timezone string
+ * @param ntpServers Array of NTP server addresses (optional)
+ * @return True if NTP initialization successful, false otherwise
+ */
 bool Networking::ntpStart(const char* posixString, const char** ntpServers)
 {
     if (!isConnected())
@@ -405,6 +519,12 @@ bool Networking::ntpStart(const char* posixString, const char** ntpServers)
     return false;
 }
 
+/**
+ * Gets current epoch time with optional timezone override.
+ * 
+ * @param posixString Optional POSIX timezone string for temporary timezone change
+ * @return Current epoch time
+ */
 time_t Networking::ntpGetEpoch(const char* posixString)
 {
     if (posixString)
@@ -425,6 +545,12 @@ time_t Networking::ntpGetEpoch(const char* posixString)
     return time(nullptr);
 }
 
+/**
+ * Gets current date in YYYY-MM-DD format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current date string or nullptr if time not available
+ */
 const char* Networking::ntpGetData(const char* posixString)
 {
     static char buffer[32];
@@ -438,6 +564,12 @@ const char* Networking::ntpGetData(const char* posixString)
     return buffer;
 }
 
+/**
+ * Gets current time in HH:MM:SS format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current time string or nullptr if time not available
+ */
 const char* Networking::ntpGetTime(const char* posixString)
 {
     static char buffer[32];
@@ -451,6 +583,12 @@ const char* Networking::ntpGetTime(const char* posixString)
     return buffer;
 }
 
+/**
+ * Gets current date and time in YYYY-MM-DD HH:MM:SS format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current date and time string or nullptr if time not available
+ */
 const char* Networking::ntpGetDateTime(const char* posixString)
 {
     static char buffer[32];
@@ -464,6 +602,12 @@ const char* Networking::ntpGetDateTime(const char* posixString)
     return buffer;
 }
 
+/**
+ * Gets current time as a tm structure.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return tm structure containing current time or empty structure if time not available
+ */
 struct tm Networking::ntpGetTmStruct(const char* posixString)
 {
     time_t now = ntpGetEpoch(posixString);

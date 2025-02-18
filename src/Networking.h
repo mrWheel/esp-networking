@@ -8,7 +8,13 @@
     #include <ESPmDNS.h>
 #endif
 
-#include <WiFiManager.h>
+#ifdef USE_ASYNC_WIFIMANAGER
+    #include <ESPAsyncWiFiManager.h>
+    #include <ESPAsyncWebServer.h>
+    #include <DNSServer.h>
+#else
+    #include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
+#endif
 #include <StreamString.h>
 #include <ArduinoOTA.h>
 #include <functional>
@@ -83,6 +89,10 @@ class Networking
     std::function<void()> _onProgressOTA;
     std::function<void()> _onEndOTA;
     std::function<void()> _onWiFiPortalStart;
+    #ifdef USE_ASYNC_WIFIMANAGER
+    AsyncWebServer* _webServer;
+    DNSServer* _dnsServer;
+    #endif
 
   public:
     Networking();
