@@ -400,16 +400,20 @@ void Networking::loop()
         MDNS.update();
     #endif
 
-    //-- Handle telnet connections
+    //-- Handle incoming telnet connections
     if (_telnetServer->hasClient()) 
     {
-        //-- If a client is already connected, disconnect it
+        WiFiClient newClient = _telnetServer->available();
+
+        //-- If an existing client is connected, notify and disconnect it
         if (_telnetClient && _telnetClient.connected()) 
         {
+            _telnetClient.println("Telnet disconnected due to new client.");
             _telnetClient.stop();
         }
-        
-        _telnetClient = _telnetServer->available();
+
+        //-- Assign the new client
+        _telnetClient = newClient;
         _telnetClient.printf("Welcome to [%s] Telnet Server!\r\n", _hostname);
     }
 
@@ -429,7 +433,7 @@ void Networking::loop()
         #endif
         _lastNtpSync = millis();
     }
-}
+} //  loop()
 
 /**
  * Get the local IP address of the device.
