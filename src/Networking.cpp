@@ -101,226 +101,624 @@
 
 #include "Networking.h"
 
-Networking::Networking() 
-    : _hostname(nullptr), _resetWiFiPin(-1), _serial(nullptr), 
-      _telnetServer(nullptr), _multiStream(nullptr), 
-      _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr), 
-      _onWiFiPortalStart(nullptr), _posixString(nullptr), _lastNtpSync(0)
-#ifdef USE_ASYNC_WIFIMANAGER
-    , _webServer(nullptr), _dnsServer(nullptr)
-#endif
-{}
-
-Networking::~Networking() 
+//-- MultiStream implementation
+/**
+ * Constructor for the MultiStream class.
+ * Initializes the serial and telnet client pointers and buffer index.
+ * 
+ * @param serial Pointer to the serial stream
+ * @param telnetClient Pointer to the telnet client
+ */
+MultiStream::MultiStream(Stream* serial, WiFiClient* telnetClient)
+    : _serial(serial), _telnetClient(telnetClient), _bufferIndex(0)
 {
-    if (_telnetServer) delete _telnetServer;
-    if (_multiStream) delete _multiStream;
-#ifdef USE_ASYNC_WIFIMANAGER
-    if (_webServer) delete _webServer;
-    if (_dnsServer) delete _dnsServer;
-#endif
 }
 
-Stream* Networking::begin(const char* hostname, int resetWiFiPin, HardwareSerial& serial, long serialSpeed, std::function<void()> wifiCallback) 
+/**
+ * Writes a single byte to the buffer.
+ * Flushes the buffer if it's full.
+ * 
+ * @param c The byte to write
+ * @return The number of bytes written
+ */
+size_t MultiStream::write(uint8_t c)
+{
+  // Add the byte to the buffer
+  _buffer[_bufferIndex++] = c;
+  
+  // If the buffer is full, flush it
+  if (_bufferIndex >= BUFFER_SIZE)
+  {
+    flushBuffer();
+  }
+  
+  return 1;
+}
+
+/**
+ * Writes a buffer of bytes directly to both streams.
+ * This is more efficient than writing byte-by-byte.
+ * 
+ * @param buffer The buffer to write
+ * @param size The number of bytes to write
+ * @return The number of bytes written
+ */
+size_t MultiStream::write(const uint8_t* buffer, size_t size)
+{
+  // First, flush any pending bytes in our internal buffer
+  if (_bufferIndex > 0)
+  {
+    flushBuffer();
+  }
+  
+  // Write the new buffer directly to both streams
+  _serial->write(buffer, size);
+  
+  if (_telnetClient && _telnetClient->connected())
+  {
+    _telnetClient->write(buffer, size);
+  }
+  
+  return size;
+}
+
+/**
+ * Flushes the internal buffer by writing its contents to both streams.
+ */
+void MultiStream::flushBuffer()
+{
+  if (_bufferIndex > 0)
+  {
+    // Write the buffer to the serial port
+    _serial->write(_buffer, _bufferIndex);
+    
+    // Write the buffer to the telnet client if connected
+    if (_telnetClient && _telnetClient->connected())
+    {
+      _telnetClient->write(_buffer, _bufferIndex);
+    }
+    
+    // Reset the buffer index
+    _bufferIndex = 0;
+  }
+}
+
+/**
+ * Flushes both streams and the internal buffer.
+ */
+void MultiStream::flush()
+{
+  // Flush our internal buffer first
+  flushBuffer();
+  
+  // Then flush both streams
+  _serial->flush();
+  
+  if (_telnetClient && _telnetClient->connected())
+  {
+    _telnetClient->flush();
+  }
+}
+
+//-- Networking implementation
+/**
+ * Constructor for the Networking class.
+ * Initializes all member variables to their default values.
+ */
+Networking::Networking() 
+    : _hostname(nullptr), _resetWiFiPin(-1), _serial(nullptr),
+      _telnetServer(nullptr), _multiStream(nullptr),
+      _onStartOTA(nullptr), _onProgressOTA(nullptr), _onEndOTA(nullptr),
+      _onWiFiPortalStart(nullptr), _posixString(nullptr), _lastNtpSync(0)
+      #ifdef USE_ASYNC_WIFIMANAGER
+      , _webServer(nullptr), _dnsServer(nullptr)
+      #endif
+{}
+
+/**
+ * Destructor for the Networking class.
+ * Cleans up dynamically allocated resources.
+ */
+Networking::~Networking() 
+{
+    if (_telnetServer) 
+    {
+        delete _telnetServer;
+    }
+    if (_multiStream) 
+    {
+        delete _multiStream;
+    }
+    #ifdef USE_ASYNC_WIFIMANAGER
+    if (_webServer)
+    {
+        delete _webServer;
+    }
+    if (_dnsServer)
+    {
+        delete _dnsServer;
+    }
+    #endif
+}
+
+/**
+ * Sets up Multicast DNS (mDNS) for the device.
+ * Enables service discovery for telnet and OTA updates.
+ */
+void Networking::setupMDNS() 
+{
+    if (MDNS.begin(_hostname)) 
+    {
+        _multiStream->println("MDNS responder started");
+        MDNS.addService("telnet", "tcp", TELNET_PORT);
+        //-- Add Arduino OTA service
+        MDNS.addService("arduino", "tcp", OTA_PORT);
+    } 
+    else 
+    {
+        _multiStream->println("Error setting up MDNS responder!");
+    }
+}
+
+/**
+ * Sets a callback function to be executed when OTA update starts.
+ * 
+ * @param callback Function to be called at the start of OTA update
+ */
+void Networking::doAtStartOTA(std::function<void()> callback)
+{
+    _onStartOTA = callback;
+}
+
+/**
+ * Sets a callback function to be executed during OTA update progress.
+ * 
+ * @param callback Function to be called during OTA update progress
+ */
+void Networking::doAtProgressOTA(std::function<void()> callback)
+{
+    _onProgressOTA = callback;
+}
+
+/**
+ * Sets a callback function to be executed when OTA update completes.
+ * 
+ * @param callback Function to be called at the end of OTA update
+ */
+void Networking::doAtEndOTA(std::function<void()> callback)
+{
+    _onEndOTA = callback;
+}
+
+/**
+ * Sets a callback function to be executed when WiFi configuration portal starts.
+ * 
+ * @param callback Function to be called when WiFi portal starts
+ */
+void Networking::doAtWiFiPortalStart(std::function<void()> callback)
+{
+    _onWiFiPortalStart = callback;
+}
+
+/**
+ * Configures Over-The-Air (OTA) update functionality.
+ * Sets up callbacks for different OTA events and initializes the OTA system.
+ */
+void Networking::setupOTA() 
+{
+    //-- Configure ArduinoOTA
+    ArduinoOTA.setHostname(_hostname);
+    
+    ArduinoOTA.onStart([this]() 
+    {
+        String type = (ArduinoOTA.getCommand() == U_FLASH) ? "firmware" : "filesystem";
+        _multiStream->printf("Start updating %s\n", type.c_str());
+        if (_onStartOTA)
+        {
+            _onStartOTA();
+        }
+    });
+    
+    ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) 
+    {
+        _multiStream->printf("Progress: %u%%\r", (progress / (total / 100)));
+        if (_onProgressOTA && (progress % (total / 5) < (total / 100)))
+        {
+            _onProgressOTA();
+        }
+    });
+    
+    ArduinoOTA.onEnd([this]() 
+    {
+        _multiStream->println("\nUpdate complete!");
+        if (_onEndOTA)
+        {
+            _onEndOTA();
+        }
+    });
+    
+    ArduinoOTA.onError([this](ota_error_t error) 
+    {
+        _multiStream->printf("Error[%u]: ", error);
+        switch (error) {
+            case OTA_AUTH_ERROR:
+                _multiStream->println("Auth Failed");
+                break;
+            case OTA_BEGIN_ERROR:
+                _multiStream->println("Begin Failed");
+                break;
+            case OTA_CONNECT_ERROR:
+                _multiStream->println("Connect Failed");
+                break;
+            case OTA_RECEIVE_ERROR:
+                _multiStream->println("Receive Failed");
+                break;
+            case OTA_END_ERROR:
+                _multiStream->println("End Failed");
+                break;
+        }
+    });
+    
+    ArduinoOTA.begin();
+    _multiStream->println("OTA ready");
+}
+
+/**
+ * Initializes the networking functionality.
+ * Sets up WiFi, MDNS, OTA updates, and telnet server.
+ * 
+ * @param hostname Device hostname for network identification
+ * @param resetWiFiPin GPIO pin for WiFi settings reset
+ * @param serial Hardware serial interface for debugging
+ * @param serialSpeed Baud rate for serial communication
+ * @param wifiCallback Optional callback for WiFi portal events
+ * @return Pointer to Stream object for debug output, nullptr if initialization fails
+ */
+Stream* Networking::begin(const char* hostname, int resetWiFiPin
+                            , HardwareSerial& serial, long serialSpeed
+                            , std::function<void()> wifiCallback) 
 {
     _hostname = hostname;
     _resetWiFiPin = resetWiFiPin;
     _serial = &serial;
-
+    
+    //-- Initialize Serial
     serial.begin(serialSpeed);
+    delay(100);
 
-#ifdef USE_ASYNC_WIFIMANAGER
+    //-- Initialize telnet server
+    _telnetServer = new WiFiServer(TELNET_PORT);
+    
+    //-- Initialize MultiStream
+    _multiStream = new MultiStream(&serial, &_telnetClient);
+    
+    //-- Initialize reset pin
+    pinMode(_resetWiFiPin, INPUT_PULLUP);
+
+    //-- Check if reset is requested
+    if (digitalRead(_resetWiFiPin) == LOW) 
+    {
+        _multiStream->println("Reset button pressed, clearing WiFi settings...");
+        #ifdef USE_ASYNC_WIFIMANAGER
+        AsyncWiFiManager wifiManager(_webServer, _dnsServer);
+        wifiManager.resetSettings();
+        #else
+        ::WiFiManager wifiManager;
+        wifiManager.resetSettings();
+        #endif
+        _multiStream->println("Settings cleared!");
+    }
+
+    #ifdef USE_ASYNC_WIFIMANAGER
+    //-- Initialize AsyncWebServer and DNSServer
     _webServer = new AsyncWebServer(80);
     _dnsServer = new DNSServer();
+
+    //-- Initialize AsyncWiFiManager
     AsyncWiFiManager wifiManager(_webServer, _dnsServer);
-#else
-    WiFiManager wifiManager;
-#endif
+    #ifdef ESP8266
+        WiFi.hostname(_hostname);
+    #else
+        WiFi.setHostname(_hostname);
+    #endif
 
-    if (resetWiFiPin >= 0)
+    if (wifiCallback)
     {
-        pinMode(resetWiFiPin, INPUT_PULLUP);
-        if (digitalRead(resetWiFiPin) == LOW)
+        _onWiFiPortalStart = wifiCallback;
+        wifiManager.setAPCallback([this](AsyncWiFiManager* mgr) 
         {
-            wifiManager.resetSettings();
-        }
+            //-- WiFiManager callback function is given
+            _onWiFiPortalStart();
+        });
     }
 
-    if (!wifiManager.autoConnect(_hostname))
+    //-- Try to connect to WiFi or start config portal
+    if (!wifiManager.autoConnect(_hostname)) 
     {
-        ESP.restart();
+        _multiStream->println("Failed to connect and hit timeout");
+        delay(3000);
+        return nullptr;
+    }
+    #else
+    //-- Initialize WiFiManager
+    ::WiFiManager wifiManager;
+    #ifdef ESP8266
+        WiFi.hostname(_hostname);
+    #else
+        WiFi.setHostname(_hostname);
+    #endif
+
+    if (wifiCallback)
+    {
+        _onWiFiPortalStart = wifiCallback;
+        wifiManager.setAPCallback([this](::WiFiManager* mgr) 
+        {
+            //-- WiFiManager callback function is given
+            _onWiFiPortalStart();
+        });
     }
 
-    // Initialize Telnet Server
-    _telnetServer = new WiFiServer(TELNET_PORT);
-    _telnetServer->begin();
+    //-- Try to connect to WiFi or start config portal
+    if (!wifiManager.autoConnect(_hostname)) 
+    {
+        _multiStream->println("Failed to connect and hit timeout");
+        delay(3000);
+        return nullptr;
+    }
+    #endif
 
-    _multiStream = new MultiStream(_serial, &_telnetClient);
+    _multiStream->println("Connected to WiFi!");
+    _multiStream->print("IP address: ");
+    _multiStream->println(getIPAddressString());
 
+    //-- Setup MDNS
     setupMDNS();
+
+    //-- Setup OTA
     setupOTA();
 
-    return _multiStream; // Return stream for optional use
+    //-- Start telnet server
+    _telnetServer->begin();
+    _telnetServer->setNoDelay(true);
+    _multiStream->println("Telnet server started");
+
+    return _multiStream;
 }
 
+/**
+ * Main loop function for handling network events.
+ * Manages OTA updates, MDNS, telnet connections, and NTP synchronization.
+ */
 void Networking::loop() 
 {
-    // Handle Telnet Connections
-    if (_telnetServer) 
-    {
-        if (!_telnetClient || !_telnetClient.connected()) 
-        {
-            _telnetClient = _telnetServer->available();
-        }
-    }
-
-#ifdef USE_ASYNC_WIFIMANAGER
-    _dnsServer->processNextRequest();
-#endif
-
-    // Automatically send status updates via MultiStream
-    static unsigned long lastLogTime = 0;
-    if (millis() - lastLogTime > 1000) // Log every second
-    {
-        lastLogTime = millis();
-        
-        char buffer[128];
-        int len = snprintf(buffer, sizeof(buffer), "Uptime: %lu ms\n", millis());
-
-        if (len > 0)
-        {
-            _multiStream->write(reinterpret_cast<const uint8_t*>(buffer), len);
-        }
-    }
-
-    // OTA Handling
+    //-- Handle OTA
     ArduinoOTA.handle();
+    
+    //-- Handle MDNS
+    #ifdef ESP8266
+        MDNS.update();
+    #endif
 
-    // Handle NTP Sync
-    if (_posixString && millis() - _lastNtpSync > NTP_SYNC_INTERVAL)
+    //-- Handle incoming telnet connections
+    if (_telnetServer->hasClient()) 
     {
-        _lastNtpSync = millis();
-        ntpStart(_posixString);
-    }
-}
+        WiFiClient newClient = _telnetServer->available();
 
+        //-- If an existing client is connected, notify and disconnect it
+        if (_telnetClient && _telnetClient.connected()) 
+        {
+            _telnetClient.println("Telnet disconnected due to new client.");
+            _telnetClient.stop();
+        }
+
+        //-- Assign the new client
+        _telnetClient = newClient;
+        _telnetClient.printf("Welcome to [%s] Telnet Server!\r\n", _hostname);
+    }
+
+    //-- Handle disconnections
+    if (_telnetClient && !_telnetClient.connected()) 
+    {
+        _telnetClient.stop();
+    }
+
+    //-- Periodic NTP sync
+    if (_posixString && (millis() - _lastNtpSync >= NTP_SYNC_INTERVAL))
+    {
+        #ifdef ESP8266
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        #else
+            configTzTime(_posixString, "pool.ntp.org", "time.nist.gov");
+        #endif
+        _lastNtpSync = millis();
+    }
+} //  loop()
+
+/**
+ * Get the local IP address of the device.
+ *
+ * @return The local IP address as an IPAddress object.
+ */
 IPAddress Networking::getIPAddress() const 
 {
     return WiFi.localIP();
 }
 
+/**
+ * Get the local IP address of the device as a string.
+ *
+ * @return The local IP address as a String object.
+ */
 String Networking::getIPAddressString() const 
 {
     return WiFi.localIP().toString();
 }
 
+/**
+ * Check if the device is connected to a WiFi network.
+ *
+ * @return True if the device is connected to a WiFi network, false otherwise.
+ */
 bool Networking::isConnected() const 
 {
     return WiFi.status() == WL_CONNECTED;
 }
 
-void Networking::setupMDNS() 
+/**
+ * Checks if the current NTP time is valid.
+ * 
+ * @return True if NTP time is valid, false otherwise
+ */
+bool Networking::ntpIsValid() const
 {
-    if (MDNS.begin(_hostname)) 
+    return time(nullptr) > 1000000;
+}
+
+/**
+ * Initializes NTP time synchronization.
+ * 
+ * @param posixString POSIX timezone string
+ * @param ntpServers Array of NTP server addresses (optional)
+ * @return True if NTP initialization successful, false otherwise
+ */
+bool Networking::ntpStart(const char* posixString, const char** ntpServers)
+{
+    if (!isConnected())
     {
-        MDNS.addService("http", "tcp", 80);
+        return false;
     }
-}
 
-void Networking::setupOTA() 
-{
-    ArduinoOTA.setHostname(_hostname);
-    ArduinoOTA.setPort(OTA_PORT);
-
-    ArduinoOTA.onStart([this]() {
-        if (_onStartOTA) _onStartOTA();
-    });
-
-    ArduinoOTA.onEnd([this]() {
-        if (_onEndOTA) _onEndOTA();
-    });
-
-    ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) {
-        if (_onProgressOTA) _onProgressOTA();
-    });
-
-    ArduinoOTA.begin();
-}
-
-void Networking::doAtStartOTA(std::function<void()> callback) { _onStartOTA = callback; }
-void Networking::doAtProgressOTA(std::function<void()> callback) { _onProgressOTA = callback; }
-void Networking::doAtEndOTA(std::function<void()> callback) { _onEndOTA = callback; }
-void Networking::doAtWiFiPortalStart(std::function<void()> callback) { _onWiFiPortalStart = callback; }
-
-bool Networking::ntpStart(const char* posixString, const char** ntpServers) 
-{
     _posixString = posixString;
+    
+    #ifdef ESP8266
+        if (ntpServers == nullptr)
+        {
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        }
+        else
+        {
+            configTime(0, 0, "pool.ntp.org", ntpServers[0]);
+        }
+    #else
+        // ESP32 uses configTzTime
+        configTzTime(posixString, "pool.ntp.org", ntpServers ? ntpServers[0] : "time.nist.gov");
+    #endif
+    
+    setenv("TZ", posixString, 1);
+    tzset();
 
-#ifdef ESP8266
-    configTime(_posixString, 
-               ntpServers ? ntpServers[0] : "pool.ntp.org",
-               ntpServers ? ntpServers[1] : "time.nist.gov",
-               ntpServers ? ntpServers[2] : "time.google.com");
-#else
-    // Extract GMT offset from POSIX string (assumes format "UTC±hh:mm")
-    long gmtOffset_sec = 0;
-    int daylightOffset_sec = 0;
-
-    if (posixString && sscanf(posixString, "UTC%ld", &gmtOffset_sec) == 1) 
+    // Wait up to 5 seconds for time sync
+    int retries = 50;
+    while (time(nullptr) < 1000000 && retries-- > 0)
     {
-        gmtOffset_sec *= 3600; // Convert hours to seconds
+        delay(100);
     }
 
-    configTime(gmtOffset_sec, daylightOffset_sec, 
-               ntpServers ? ntpServers[0] : "pool.ntp.org",
-               ntpServers ? ntpServers[1] : "time.nist.gov",
-               ntpServers ? ntpServers[2] : "time.google.com");
-#endif
-
-    struct tm timeinfo;
-    return getLocalTime(&timeinfo);
+    if (time(nullptr) > 1000000)
+    {
+        _lastNtpSync = millis();
+        return true;
+    }
+    return false;
 }
 
-bool Networking::ntpIsValid() const 
+/**
+ * Gets current epoch time with optional timezone override.
+ * 
+ * @param posixString Optional POSIX timezone string for temporary timezone change
+ * @return Current epoch time
+ */
+time_t Networking::ntpGetEpoch(const char* posixString)
 {
-    struct tm timeinfo;
-    return getLocalTime(&timeinfo);
-}
+    if (posixString)
+    {
+        setenv("TZ", posixString, 1);
+        tzset();
+    }
+    else if (!_posixString)
+    {
+        return 0;
+    }
+    else
+    {
+        setenv("TZ", _posixString, 1); // Reset to default timezone
+        tzset();
+    }
 
-time_t Networking::ntpGetEpoch(const char* posixString) 
-{
-    if (posixString) ntpStart(posixString);
     return time(nullptr);
 }
 
-const char* Networking::ntpGetData(const char* posixString) 
+/**
+ * Gets current date in YYYY-MM-DD format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current date string or nullptr if time not available
+ */
+const char* Networking::ntpGetData(const char* posixString)
 {
     static char buffer[32];
     time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
     strftime(buffer, sizeof(buffer), "%Y-%m-%d", localtime(&now));
     return buffer;
 }
 
-const char* Networking::ntpGetTime(const char* posixString) 
+/**
+ * Gets current time in HH:MM:SS format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current time string or nullptr if time not available
+ */
+const char* Networking::ntpGetTime(const char* posixString)
 {
-    static char buffer[16];
+    static char buffer[32];
     time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
     strftime(buffer, sizeof(buffer), "%H:%M:%S", localtime(&now));
     return buffer;
 }
 
-const char* Networking::ntpGetDateTime(const char* posixString) 
+/**
+ * Gets current date and time in YYYY-MM-DD HH:MM:SS format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current date and time string or nullptr if time not available
+ */
+const char* Networking::ntpGetDateTime(const char* posixString)
 {
     static char buffer[32];
     time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&now));
     return buffer;
 }
 
-struct tm Networking::ntpGetTmStruct(const char* posixString) 
+/**
+ * Gets current time as a tm structure.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return tm structure containing current time or empty structure if time not available
+ */
+struct tm Networking::ntpGetTmStruct(const char* posixString)
 {
     time_t now = ntpGetEpoch(posixString);
-    struct tm timeinfo;
-    localtime_r(&now, &timeinfo);
-    return timeinfo;
+    if (now == 0)
+    {
+        struct tm empty = {};
+        return empty;
+    }
+    
+    return *localtime(&now);
 }
