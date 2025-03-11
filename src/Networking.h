@@ -13,56 +13,34 @@
     #include <ESPAsyncWebServer.h>
     #include <DNSServer.h>
 #else
-    #include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
+    #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager
 #endif
+
 #include <StreamString.h>
 #include <ArduinoOTA.h>
 #include <functional>
 
-class MultiStream : public Stream 
+class MultiStream : public Stream
 {
   private:
     Stream* _serial;
     WiFiClient* _telnetClient;
+    static const size_t BUFFER_SIZE = 128;
+    uint8_t _buffer[BUFFER_SIZE];
+    size_t _bufferIndex;
+
+    void flushBuffer();
 
   public:
-    /**
-     * MultiStream is a wrapper for a Stream object that writes to both a local
-     * serial interface and a remote telnet client.
-     *
-     * @param serial The local serial interface to write to.
-     * @param telnetClient The remote telnet client to write to.
-     */
-    MultiStream(Stream* serial, WiFiClient* telnetClient) 
-        : _serial(serial), _telnetClient(telnetClient) {}
-
-    /**
-     * Writes a byte to both the serial and telnet client streams.
-     *
-     * @param c The byte to be written.
-     * @return The total number of bytes written to both streams.
-     */
-
-    /**
-     * Writes a byte to both the serial and telnet client streams.
-     *
-     * @param c The byte to be written.
-     * @return The total number of bytes written to both streams.
-     */
-    virtual size_t write(uint8_t c) override 
-    {
-        size_t written = _serial->write(c);
-        if (_telnetClient && _telnetClient->connected())
-        {
-            written += _telnetClient->write(c);
-        }
-        return written;
-    }
-
+    MultiStream(Stream* serial, WiFiClient* telnetClient);
+    
+    virtual size_t write(uint8_t c) override;
+    virtual size_t write(const uint8_t* buffer, size_t size) override;
+    
     virtual int available() override { return _serial->available(); }
     virtual int read() override { return _serial->read(); }
     virtual int peek() override { return _serial->peek(); }
-    virtual void flush() override { _serial->flush(); }
+    virtual void flush() override;
 
     using Print::write;
 };
@@ -77,6 +55,7 @@ class Networking
     WiFiClient _telnetClient;
     MultiStream* _multiStream;
     static const int TELNET_PORT = 23;
+    
     #ifdef ESP8266
     static const int OTA_PORT = 8266;
     #else
@@ -89,6 +68,7 @@ class Networking
     std::function<void()> _onProgressOTA;
     std::function<void()> _onEndOTA;
     std::function<void()> _onWiFiPortalStart;
+
     #ifdef USE_ASYNC_WIFIMANAGER
     AsyncWebServer* _webServer;
     DNSServer* _dnsServer;
