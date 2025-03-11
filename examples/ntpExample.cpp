@@ -52,7 +52,7 @@ void setup()
     });
     
     //-- Parameters: hostname, reset pin, serial object, baud rate
-    debug = networking->begin("esp32", 0, Serial, 115200);
+    debug = networking->begin("example", 0, Serial, 115200);
     
     if (!debug) 
     {

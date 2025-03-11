@@ -20,6 +20,9 @@
 #include <ArduinoOTA.h>
 #include <functional>
 
+#define WIFI_RECONNECT_INTERVAL 10000  // 10 seconds
+#define WIFI_RECONNECT_MAX_ATTEMPTS 5  // Maximum retries before restart
+
 class MultiStream : public Stream
 {
   private:
@@ -86,6 +89,7 @@ class Networking
     String getIPAddressString() const;
     bool isConnected() const;
 
+    void reconnectWiFi();
     void doAtStartOTA(std::function<void()> callback);
     void doAtProgressOTA(std::function<void()> callback);
     void doAtEndOTA(std::function<void()> callback);
