@@ -20,7 +20,7 @@
 #include <ArduinoOTA.h>
 #include <functional>
 
-class MultiStream : public Stream 
+class MultiStream : public Stream
 {
   private:
     Stream* _serial;

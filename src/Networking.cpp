@@ -96,7 +96,6 @@
 *   - Automatic hourly sync in background
 *   - Timezone support using POSIX timezone strings
 *   - Temporary timezone changes without affecting default
-*
 ********************************************************************************/
 
 #include "Networking.h"
