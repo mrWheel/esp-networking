@@ -247,18 +247,29 @@ Networking::~Networking()
  */
 void Networking::setupMDNS() 
 {
+    _multiStream->printf("Start MDNS with hostname [%s.local]\n", _hostname);
     if (MDNS.begin(_hostname)) 
     {
-        _multiStream->println("MDNS responder started");
+        // Add Telnet service
+        _multiStream->printf("addService(\"telnet\", \"tcp\", %d)\n", TELNET_PORT);
         MDNS.addService("telnet", "tcp", TELNET_PORT);
-        //-- Add Arduino OTA service
-        MDNS.addService("arduino", "tcp", OTA_PORT);
+
+        #ifdef ESP32
+            // Enable the Arduino OTA service (this automatically registers the Arduino service)
+            _multiStream->printf("enableArduino(%d) - this may show \"Failed adding Arduino service\"!\n", OTA_PORT);
+            MDNS.enableArduino(OTA_PORT); // This should handle Arduino OTA automatically
+        #else
+            // Add Arduino OTA service for ESP8266
+            _multiStream->printf("addService(\"arduino\", \"tcp\", %d)\n", OTA_PORT);
+            MDNS.addService("arduino", "tcp", OTA_PORT);
+        #endif
     } 
     else 
     {
         _multiStream->println("Error setting up MDNS responder!");
     }
-}
+
+} //  Networking::setupMDNS()
 
 /**
  * Sets a callback function to be executed when OTA update starts.
@@ -375,99 +386,83 @@ void Networking::setupOTA()
  * @return Pointer to Stream object for debug output, nullptr if initialization fails
  */
 Stream* Networking::begin(const char* hostname, int resetWiFiPin
-                            , HardwareSerial& serial, long serialSpeed
-                            , std::function<void()> wifiCallback) 
+  , HardwareSerial& serial, long serialSpeed
+  , std::function<void()> wifiCallback) 
 {
     _hostname = hostname;
     _resetWiFiPin = resetWiFiPin;
     _serial = &serial;
-    
+
     //-- Initialize Serial
     serial.begin(serialSpeed);
     delay(100);
 
     //-- Initialize telnet server
     _telnetServer = new WiFiServer(TELNET_PORT);
-    
+
     //-- Initialize MultiStream
     _multiStream = new MultiStream(&serial, &_telnetClient);
-    
+
     //-- Initialize reset pin
     pinMode(_resetWiFiPin, INPUT_PULLUP);
 
     //-- Check if reset is requested
     if (digitalRead(_resetWiFiPin) == LOW) 
     {
-        _multiStream->println("Reset button pressed, clearing WiFi settings...");
-        #ifdef USE_ASYNC_WIFIMANAGER
-        AsyncWiFiManager wifiManager(_webServer, _dnsServer);
-        wifiManager.resetSettings();
-        #else
-        ::WiFiManager wifiManager;
-        wifiManager.resetSettings();
-        #endif
-        _multiStream->println("Settings cleared!");
+    _multiStream->println("Reset button pressed, clearing WiFi settings...");
+    #ifdef USE_ASYNC_WIFIMANAGER
+    AsyncWiFiManager wifiManager(_webServer, _dnsServer);
+    wifiManager.resetSettings();
+    #else
+    ::WiFiManager wifiManager;
+    wifiManager.resetSettings();
+    #endif
+    _multiStream->println("Settings cleared!");
     }
+
+    //-- Try connecting to WiFi
+    _multiStream->println("Connecting to WiFi...");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin();
+
+    int retries = 20;
+    while (!isConnected() && retries-- > 0) 
+    {
+    delay(500);
+    _multiStream->print(".");
+    }
+
+    if (!isConnected()) 
+    {
+    _multiStream->println("\nWiFi connection failed. Starting configuration portal...");
 
     #ifdef USE_ASYNC_WIFIMANAGER
-    //-- Initialize AsyncWebServer and DNSServer
     _webServer = new AsyncWebServer(80);
     _dnsServer = new DNSServer();
-
-    //-- Initialize AsyncWiFiManager
     AsyncWiFiManager wifiManager(_webServer, _dnsServer);
-    #ifdef ESP8266
-        WiFi.hostname(_hostname);
     #else
-        WiFi.setHostname(_hostname);
-    #endif
-
-    if (wifiCallback)
-    {
-        _onWiFiPortalStart = wifiCallback;
-        wifiManager.setAPCallback([this](AsyncWiFiManager* mgr) 
-        {
-            //-- WiFiManager callback function is given
-            _onWiFiPortalStart();
-        });
-    }
-
-    //-- Try to connect to WiFi or start config portal
-    if (!wifiManager.autoConnect(_hostname)) 
-    {
-        _multiStream->println("Failed to connect and hit timeout");
-        delay(3000);
-        return nullptr;
-    }
-    #else
-    //-- Initialize WiFiManager
     ::WiFiManager wifiManager;
-    #ifdef ESP8266
-        WiFi.hostname(_hostname);
-    #else
-        WiFi.setHostname(_hostname);
     #endif
 
     if (wifiCallback)
     {
-        _onWiFiPortalStart = wifiCallback;
-        wifiManager.setAPCallback([this](::WiFiManager* mgr) 
-        {
-            //-- WiFiManager callback function is given
-            _onWiFiPortalStart();
-        });
+    _onWiFiPortalStart = wifiCallback;
+    wifiManager.setAPCallback([this](::WiFiManager* mgr) 
+    {
+    _onWiFiPortalStart();
+    });
     }
 
-    //-- Try to connect to WiFi or start config portal
     if (!wifiManager.autoConnect(_hostname)) 
     {
-        _multiStream->println("Failed to connect and hit timeout");
-        delay(3000);
-        return nullptr;
+    _multiStream->println("Failed to connect to WiFi. Restarting...");
+    delay(3000);
+    ESP.restart();
+    return nullptr;
     }
-    #endif
+    }
 
-    _multiStream->println("Connected to WiFi!");
+    _multiStream->println("\nConnected to WiFi!");
     _multiStream->print("IP address: ");
     _multiStream->println(getIPAddressString());
 
@@ -483,7 +478,8 @@ Stream* Networking::begin(const char* hostname, int resetWiFiPin
     _multiStream->println("Telnet server started");
 
     return _multiStream;
-}
+
+} //  Networking::begin()
 
 /**
  * Main loop function for handling network events.
@@ -498,6 +494,35 @@ void Networking::loop()
     #ifdef ESP8266
         MDNS.update();
     #endif
+
+    static unsigned long lastReconnectAttempt = 0;
+    static int reconnectAttempts = 0;
+
+    //-- Check WiFi status and reconnect if necessary
+    if (!isConnected()) 
+    {
+        if (millis() - lastReconnectAttempt >= WIFI_RECONNECT_INTERVAL) 
+        {
+            lastReconnectAttempt = millis();
+            _multiStream->println("WiFi disconnected! Attempting to reconnect...");
+            
+            if (reconnectAttempts < WIFI_RECONNECT_MAX_ATTEMPTS) 
+            {
+                reconnectWiFi();
+                reconnectAttempts++;
+            } 
+            else 
+            {
+                _multiStream->println("Max WiFi reconnect attempts reached! Restarting...");
+                ESP.restart();  // Restart if unable to reconnect
+            }
+        }
+    } 
+    else 
+    {
+        // Reset reconnect attempts on successful connection
+        reconnectAttempts = 0;
+    }
 
     //-- Handle incoming telnet connections
     if (_telnetServer->hasClient()) 
@@ -532,7 +557,38 @@ void Networking::loop()
         #endif
         _lastNtpSync = millis();
     }
-} //  loop()
+
+} //  Networking::loop()
+
+void Networking::reconnectWiFi() 
+{
+    _multiStream->println("Reconnecting to WiFi...");
+
+    WiFi.disconnect();
+    delay(500);
+    WiFi.begin();
+
+    // Wait for connection
+    int retries = 20; // Try for 10 seconds (20 x 500ms)
+    while (!isConnected() && retries-- > 0) 
+    {
+        delay(500);
+        _multiStream->print(".");
+    }
+
+    if (isConnected()) 
+    {
+        _multiStream->println("\nWiFi reconnected successfully!");
+        _multiStream->print("New IP: ");
+        _multiStream->println(getIPAddressString());
+    } 
+    else 
+    {
+        _multiStream->println("\nWiFi reconnection failed.");
+    }
+
+} //  Networking::reconnectWiFi()
+
 
 /**
  * Get the local IP address of the device.
