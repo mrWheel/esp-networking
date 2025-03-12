@@ -20,7 +20,7 @@
 #include <ArduinoOTA.h>
 #include <functional>
 
-#define WIFI_RECONNECT_INTERVAL 10000  // 10 seconds
+//#define WIFI_RECONNECT_INTERVAL 10000  // 10 seconds
 #define WIFI_RECONNECT_MAX_ATTEMPTS 5  // Maximum retries before restart
 
 class MultiStream : public Stream
@@ -67,6 +67,13 @@ class Networking
 
     void setupMDNS();
     void setupOTA();
+    void setupWiFiEvents();  // New method for setting up WiFi events
+    
+    // WiFi event tracking variables
+    bool _isReconnecting;    // Flag to track if we're in the process of reconnecting
+    int _reconnectAttempts;  // Counter for reconnection attempts
+    unsigned long _lastReconnectAttempt; // Timestamp of last reconnect attempt
+    
     std::function<void()> _onStartOTA;
     std::function<void()> _onProgressOTA;
     std::function<void()> _onEndOTA;
@@ -108,4 +115,14 @@ class Networking
     const char* _posixString;
     unsigned long _lastNtpSync;
     static const unsigned long NTP_SYNC_INTERVAL = 3600000; // 1 hour in milliseconds
+    
+    // Static event handlers (needed for ESP8266)
+    #ifdef ESP8266
+    static void _onStationModeConnected(const WiFiEventStationModeConnected& event);
+    static void _onStationModeDisconnected(const WiFiEventStationModeDisconnected& event);
+    static void _onStationModeGotIP(const WiFiEventStationModeGotIP& event);
+    
+    // Static instance pointer for callbacks
+    static Networking* _instance;
+    #endif
 };
