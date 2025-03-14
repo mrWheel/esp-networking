@@ -42,6 +42,11 @@ void showTime()
 
 void setup() 
 {
+    Serial.begin(115200);
+    while(!Serial) { delay(10); }
+    delay(5000);
+    Serial.println("\nStarting ntpExample ...\n");
+
     networking = new Networking();
     
     //-- Optional: Register WiFiManager callback for when portal starts

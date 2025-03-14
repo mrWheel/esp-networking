@@ -34,6 +34,7 @@ void setup()
 {
     Serial.begin(115200);
     delay(5000);
+    Serial.println("\nStarting basicExample ...\n");
 
     pinMode(0, INPUT_PULLUP);
     
