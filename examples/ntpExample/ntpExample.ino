@@ -9,7 +9,7 @@ void showTime()
 {
     //-- Get and print current date
     debug->print("\r\nCurrent Date         : ");
-    debug->println(networking->ntpGetData());
+    debug->println(networking->ntpGetDate());
     
     //-- Get and print current time
     debug->print("Current Time         : ");

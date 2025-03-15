@@ -755,7 +755,7 @@ time_t Networking::ntpGetEpoch(const char* posixString)
  * @param posixString Optional POSIX timezone string
  * @return Current date string or nullptr if time not available
  */
-const char* Networking::ntpGetData(const char* posixString)
+const char* Networking::ntpGetDate(const char* posixString)
 {
     static char buffer[32];
     time_t now = ntpGetEpoch(posixString);

@@ -106,7 +106,7 @@ class Networking
     bool ntpStart(const char* posixString, const char** ntpServers = nullptr);
     bool ntpIsValid() const;
     time_t ntpGetEpoch(const char* posixString = nullptr);
-    const char* ntpGetData(const char* posixString = nullptr);
+    const char* ntpGetDate(const char* posixString = nullptr);
     const char* ntpGetTime(const char* posixString = nullptr);
     const char* ntpGetDateTime(const char* posixString = nullptr);
     struct tm ntpGetTmStruct(const char* posixString = nullptr);
