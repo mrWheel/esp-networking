@@ -190,146 +190,386 @@ Time zones are specified using POSIX timezone strings. Common examples:
 - UTC: "UTC0"
 - Japan: "JST-9"
 
-## API Reference
 
-### Constructor
-```cpp
-Networking();
-```
+# ESP Networking Library API Documentation
 
-### Main Methods
+## What is an API?
 
-#### begin()
-```cpp
-Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed);
-```
-or
-```cpp
-Stream* begin(const char* hostname, int resetPin, HardwareSerial& serial, long serialSpeed,
-                                                       std::function<void()> wifiPortalStart);
-```
-Initializes the networking features:
-- `hostname`: Device name for network identification
-- `resetPin`: GPIO pin for WiFi reset functionality
-- `serial`: Serial interface for debugging
-- `serialSpeed`: Baud rate for serial communication
-- `wifiPortalStart`: Sets callback function if WiFi Portal starts
-- Returns: Stream object for debug output
+An API (Application Programming Interface) is a set of clearly defined methods, functions, and protocols that developers can use to communicate with specific software or hardware. An API acts as a bridge between different software components, allowing them to communicate with each other without the developer needing to understand the internal workings of each component.
 
-#### loop()
-```cpp
-void loop();
-```
-Must be called in the main loop to handle:
-- OTA updates
-- MDNS updates
-- Telnet connections
-- Network events
-- NTP synchronization
+In the context of this library, the API provides a simple way to implement network functionality in ESP8266/ESP32 projects, without having to worry about the complex details of WiFi connections, OTA updates, telnet servers, or NTP time synchronization.
 
-### Status Methods
+## Networking Library Overview
 
-#### isConnected()
-```cpp
-bool isConnected() const;
-```
-Returns true if connected to WiFi
+The ESP Networking library provides a comprehensive set of functions for managing network connections on ESP8266 and ESP32 microcontrollers. The library simplifies the process of:
 
-#### getIPAddress()
-```cpp
-IPAddress getIPAddress() const;
-```
-Returns the current IP address as an IPAddress object
-
-#### getIPAddressString()
-```cpp
-String getIPAddressString() const;
-```
-Returns the current IP address as a string
-
-### NTP Methods
-
-#### ntpStart()
-```cpp
-bool ntpStart(const char* posixString, const char** ntpServers = nullptr);
-```
-Initializes NTP with timezone and optional custom servers:
-- `posixString`: POSIX timezone string
-- `ntpServers`: Optional array of custom NTP server addresses
-- Returns: true if time sync successful
-
-#### ntpIsValid()
-```cpp
-bool ntpIsValid() const;
-```
-Returns true if valid time is available from NTP
-
-#### ntpGetEpoch()
-```cpp
-time_t ntpGetEpoch(const char* posixString = nullptr);
-```
-Returns current epoch time, optionally in a different timezone
-
-#### ntpGetData()
-```cpp
-const char* ntpGetData(const char* posixString = nullptr);
-```
-Returns current date (YYYY-MM-DD)
-
-#### ntpGetTime()
-```cpp
-const char* ntpGetTime(const char* posixString = nullptr);
-```
-Returns current time (HH:MM:SS)
-
-#### ntpGetDateTime()
-```cpp
-const char* ntpGetDateTime(const char* posixString = nullptr);
-```
-Returns current date and time (YYYY-MM-DD HH:MM:SS)
-
-#### ntpGetTmStruct()
-```cpp
-struct tm ntpGetTmStruct(const char* posixString = nullptr);
-```
-Returns time as tm struct for custom formatting
-
-### OTA and WiFiManager Callback Methods
-
-#### doAtStartOTA()
-```cpp
-void doAtStartOTA(std::function<void()> callback);
-```
-Registers a callback function that is called when an OTA update starts
-
-#### doAtProgressOTA()
-```cpp
-void doAtProgressOTA(std::function<void()> callback);
-```
-Registers a callback function that is called at every 20% progress during OTA update
-
-#### doAtEndOTA()
-```cpp
-void doAtEndOTA(std::function<void()> callback);
-```
-Registers a callback function that is called when an OTA update is about to end
-
-#### doAtWiFiPortalStart()
-```cpp
-void doAtWiFiPortalStart(std::function<void()> callback);
-```
-Registers a callback function that is called when WiFiManager portal is started (no valid SSID found)
-
-## Automatic Features
-
-The library handles these features automatically:
-- WiFi connection management
+- WiFi connection and configuration
+- Over-the-Air (OTA) firmware updates
 - Telnet server for remote debugging
-- MDNS for network discovery
-- OTA update capability
-- Combined serial/telnet output streaming
-- Hourly NTP time synchronization
+- mDNS service discovery
+- NTP time synchronization
+- Automatic WiFi reconnection
+
+## Main Classes
+
+### Networking Class
+
+The `Networking` class is the primary interface for all network functionality.
+
+#### Initialization
+
+```cpp
+Networking* networking = new Networking();
+Stream* debug = networking->begin("my-esp", 0, Serial, 115200);
+
+// Optional: callback for WiFi portal
+networking->doAtWiFiPortalStart([]() 
+{
+  Serial.println("WiFi configuration portal started");
+});
+```
+
+#### Important Methods
+
+##### `begin(hostname, resetWiFiPin, serial, serialSpeed, wifiCallback)`
+
+Initializes the networking functionality.
+
+- `hostname`: The name by which the device is visible on the network
+- `resetWiFiPin`: GPIO pin used to reset WiFi settings (connect to GND to reset)
+- `serial`: HardwareSerial object for debug output
+- `serialSpeed`: Baud rate for serial communication
+- `wifiCallback`: Optional callback function that is called when the WiFi configuration portal starts
+
+```cpp
+// Example: Initialization with callback for WiFi portal
+Stream* debug = networking->begin("esp32-project", 0, Serial, 115200, []() 
+{
+  Serial.println("WiFi configuration portal started!");
+  // Here you could, for example, make an LED blink
+});
+```
+
+Or you can do
+
+```cpp
+void callBackWiFiPortal()
+{
+  Serial.println("WiFi configuration portal started");
+  digitalWrite(LED_BUILTIN, HIGH);
+}
+
+// Example: Initialization with callback for WiFi portal
+Stream* debug = networking->begin("esp32-project", 0, Serial, 115200, callBackWiFiPortal);
+```
+
+
+##### `loop()`
+
+Must be called regularly in the main loop of your program to handle network events.
+
+```cpp
+void loop() {
+  networking->loop(); // Required for proper operation
+  
+  // Your own code here
+}
+```
+
+##### WiFi-related methods
+
+```cpp
+// Check if WiFi is connected
+if (networking->isConnected()) {
+  Serial.println("Connected to WiFi");
+}
+
+// Get the IP address as an IPAddress object
+IPAddress ip = networking->getIPAddress();
+
+// Get the IP address as a string
+String ipStr = networking->getIPAddressString();
+Serial.print("IP address: ");
+Serial.println(ipStr); // For example: "192.168.1.105"
+
+// Manually reconnect to WiFi (if needed)
+networking->reconnectWiFi();
+```
+
+##### OTA Update Callbacks
+
+```cpp
+// Register callbacks for OTA updates
+networking->doAtStartOTA([]() {
+  Serial.println("OTA update started");
+  // For example: turn on LED to indicate update in progress
+});
+
+networking->doAtProgressOTA([]() {
+  Serial.println("OTA update progress");
+  // Called approximately every 20%
+});
+
+networking->doAtEndOTA([]() {
+  Serial.println("OTA update completed");
+  // For example: turn off LED
+});
+```
+
+##### NTP Time Synchronization
+
+```cpp
+// Start NTP with timezone for Amsterdam
+if (networking->ntpStart("CET-1CEST,M3.5.0,M10.5.0/3")) {
+  Serial.println("NTP successfully started");
+}
+
+// Optional: specify custom NTP servers
+const char* ntpServers[] = {"time.google.com", "time.cloudflare.com", nullptr};
+networking->ntpStart("CET-1CEST,M3.5.0,M10.5.0/3", ntpServers);
+
+// Check if NTP time is valid
+if (networking->ntpIsValid()) {
+  Serial.println("NTP time is valid");
+}
+
+// Get current date (YYYY-MM-DD)
+Serial.print("Date: ");
+Serial.println(networking->ntpGetDate()); // For example: "2025-03-15"
+
+// Get current time (HH:MM:SS)
+Serial.print("Time: ");
+Serial.println(networking->ntpGetTime()); // For example: "14:30:25"
+
+// Get current date and time (YYYY-MM-DD HH:MM:SS)
+Serial.print("Date and time: ");
+Serial.println(networking->ntpGetDateTime()); // For example: "2025-03-15 14:30:25"
+
+// Get epoch time (seconds since 1-1-1970)
+time_t epoch = networking->ntpGetEpoch();
+Serial.print("Epoch: ");
+Serial.println(epoch); // For example: "1742265025"
+
+// Get time in another timezone (for example New York)
+Serial.print("New York time: ");
+Serial.println(networking->ntpGetDateTime("EST5EDT,M3.2.0,M11.1.0"));
+
+// Get detailed time information as tm struct
+struct tm timeInfo = networking->ntpGetTmStruct();
+Serial.printf("Year: %d\n", timeInfo.tm_year + 1900);
+Serial.printf("Month: %d\n", timeInfo.tm_mon + 1);
+Serial.printf("Day: %d\n", timeInfo.tm_mday);
+Serial.printf("Hour: %d\n", timeInfo.tm_hour);
+Serial.printf("Minute: %d\n", timeInfo.tm_min);
+Serial.printf("Second: %d\n", timeInfo.tm_sec);
+```
+
+### MultiStream Class
+
+The `MultiStream` class is used internally to direct output to both the serial port and telnet clients. You typically don't need to use this class directly, but you can use the `Stream*` object returned by `begin()` for all debug output.
+
+```cpp
+// Use the debug object for all output
+debug->println("This text appears on both the serial monitor and via telnet");
+debug->printf("Formatted output: %d, %s\n", 42, "text");
+```
+
+## Complete Examples
+
+### Basic Example
+
+```cpp
+#include "Networking.h"
+
+Networking* networking = nullptr;
+Stream* debug = nullptr;
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  // Initialize networking
+  networking = new Networking();
+  debug = networking->begin("my-esp", 0, Serial, 115200);
+  
+  if (!debug) {
+    ESP.restart(); // Restart if connection fails
+  }
+  
+  debug->println("Network initialized!");
+  debug->print("IP address: ");
+  debug->println(networking->getIPAddressString());
+}
+
+void loop() {
+  // Required: process network events
+  networking->loop();
+  
+  // Your code here
+  delay(1000);
+  debug->println("Hello world!");
+}
+```
+
+### NTP Example
+
+```cpp
+#include "Networking.h"
+
+Networking* networking = nullptr;
+Stream* debug = nullptr;
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  // Initialize networking
+  networking = new Networking();
+  debug = networking->begin("my-esp", 0, Serial, 115200);
+  
+  if (!debug) {
+    ESP.restart();
+  }
+  
+  // Start NTP with Amsterdam timezone
+  if (networking->ntpStart("CET-1CEST,M3.5.0,M10.5.0/3")) {
+    debug->println("NTP started");
+  }
+}
+
+void loop() {
+  networking->loop();
+  
+  // Show time every 5 seconds
+  static unsigned long lastTime = 0;
+  if (millis() - lastTime > 5000) {
+    lastTime = millis();
+    
+    if (networking->ntpIsValid()) {
+      debug->print("Current time: ");
+      debug->println(networking->ntpGetDateTime());
+    } else {
+      debug->println("Waiting for valid time...");
+    }
+  }
+}
+```
+
+### OTA Update Example
+
+```cpp
+#include "Networking.h"
+
+Networking* networking = nullptr;
+Stream* debug = nullptr;
+bool updateInProgress = false;
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  // Initialize networking
+  networking = new Networking();
+  
+  // Register OTA callbacks
+  networking->doAtStartOTA([]() {
+    updateInProgress = true;
+    digitalWrite(LED_BUILTIN, HIGH); // LED on during update
+  });
+  
+  networking->doAtEndOTA([]() {
+    updateInProgress = false;
+    digitalWrite(LED_BUILTIN, LOW); // LED off after update
+  });
+  
+  // Start networking
+  debug = networking->begin("my-esp", 0, Serial, 115200);
+  
+  if (!debug) {
+    ESP.restart();
+  }
+  
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+  
+  debug->println("Ready for OTA updates!");
+  debug->print("IP address: ");
+  debug->println(networking->getIPAddressString());
+}
+
+void loop() {
+  networking->loop();
+  
+  // Normal operation when no update is in progress
+  if (!updateInProgress) {
+    // Your code here
+    delay(1000);
+    debug->println("System running normally...");
+  }
+}
+```
+
+## Advanced Features
+
+### WiFi Reset
+
+The library supports resetting WiFi settings by pulling a GPIO pin low (connecting to GND). This is useful if you want to move your device to a different network.
+
+```cpp
+// During initialization, specify the reset pin (here GPIO 0)
+debug = networking->begin("my-esp", 0, Serial, 115200);
+
+// If GPIO 0 is low during startup, WiFi settings are cleared
+// and the configuration portal starts
+```
+
+### Telnet Server
+
+The library automatically starts a telnet server on port 23. You can connect to the device via telnet to see debug output and monitor without a physical connection.
+
+```
+$ telnet my-esp.local
+Connected to my-esp.local.
+Escape character is '^]'.
+Welcome to [my-esp] Telnet Server!
+```
+
+### mDNS Service Discovery
+
+The device is discoverable on the local network via mDNS with the hostname you specify, followed by ".local". For example: "my-esp.local".
+
+## Timezone Formats
+
+For NTP time synchronization, the library uses POSIX timezone strings. Here are some examples:
+
+- Amsterdam/Netherlands: `"CET-1CEST,M3.5.0,M10.5.0/3"`
+- London/UK: `"GMT0BST,M3.5.0/1,M10.5.0"`
+- New York/US Eastern: `"EST5EDT,M3.2.0,M11.1.0"`
+- Los Angeles/US Pacific: `"PST8PDT,M3.2.0,M11.1.0"`
+- Tokyo/Japan: `"JST-9"`
+- Sydney/Australia: `"AEST-10AEDT,M10.1.0,M4.1.0/3"`
+
+## Error Handling and Reliability
+
+The library contains built-in mechanisms for automatically reconnecting to WiFi when the connection is lost. If the maximum number of reconnection attempts (default 5) is reached, the device will automatically restart.
+
+```cpp
+// Periodically check connection status
+if (!networking->isConnected()) {
+  debug->println("WiFi connection lost!");
+  
+  // The library will automatically try to reconnect
+  // You can also manually reconnect:
+  networking->reconnectWiFi();
+}
+```
+
+## Compatibility
+
+The library works with both ESP8266 and ESP32 platforms and automatically detects which platform is being used. It provides a consistent API across both platforms, making your code easily portable.
+
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
