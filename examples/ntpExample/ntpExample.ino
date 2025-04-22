@@ -8,8 +8,10 @@ Stream* debug = nullptr;
 void showTime()
 {
     //-- Get and print current date
-    debug->print("\r\nCurrent Date         : ");
+    debug->print("\r\nCurrent Date (YMD)   : ");
     debug->println(networking->ntpGetDate());
+    debug->print("Current Date (DMY)   : ");
+    debug->println(networking->ntpGetDateDMY());
     
     //-- Get and print current time
     debug->print("Current Time         : ");
@@ -18,6 +20,8 @@ void showTime()
     //-- Get and print current date and time
     debug->print("Current Date and Time: ");
     debug->println(networking->ntpGetDateTime());
+    debug->print("Current Date and Time: ");
+    debug->println(networking->ntpGetDateTimeDMY());
     
     //-- Get epoch time
     time_t epoch = networking->ntpGetEpoch();

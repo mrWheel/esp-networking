@@ -766,7 +766,27 @@ const char* Networking::ntpGetDate(const char* posixString)
     
     strftime(buffer, sizeof(buffer), "%Y-%m-%d", localtime(&now));
     return buffer;
-}
+} // ntpGetDate()
+
+/**
+ * Gets current date in DD-MM-YYYY format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current date string or nullptr if time not available
+ */
+const char* Networking::ntpGetDateDMY(const char* posixString)
+{
+    static char buffer[32];
+    time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
+    strftime(buffer, sizeof(buffer), "%d-%m-%Y", localtime(&now));
+    return buffer;
+
+} //  ntpGetDateDMY()
 
 /**
  * Gets current time in HH:MM:SS format.
@@ -803,6 +823,24 @@ const char* Networking::ntpGetDateTime(const char* posixString)
     }
     
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    return buffer;
+}
+/**
+ * Gets current date and time in DD-MM-YYYY HH:MM:SS format.
+ * 
+ * @param posixString Optional POSIX timezone string
+ * @return Current date and time string or nullptr if time not available
+ */
+const char* Networking::ntpGetDateTimeDMY(const char* posixString)
+{
+    static char buffer[32];
+    time_t now = ntpGetEpoch(posixString);
+    if (now == 0)
+    {
+        return nullptr;
+    }
+    
+    strftime(buffer, sizeof(buffer), "%d-%m-%Y %H:%M:%S", localtime(&now));
     return buffer;
 }
 
