@@ -107,8 +107,10 @@ class Networking
     bool ntpIsValid() const;
     time_t ntpGetEpoch(const char* posixString = nullptr);
     const char* ntpGetDate(const char* posixString = nullptr);
+    const char* ntpGetDateDMY(const char* posixString = nullptr);
     const char* ntpGetTime(const char* posixString = nullptr);
     const char* ntpGetDateTime(const char* posixString = nullptr);
+    const char* ntpGetDateTimeDMY(const char* posixString = nullptr);
     struct tm ntpGetTmStruct(const char* posixString = nullptr);
 
   private:

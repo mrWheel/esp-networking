@@ -1,0 +1,74 @@
+# GitHub Actions workflow: Auto-tag releases based on version in library.properties
+
+name: Auto Tag Release
+
+# Trigger this workflow only on push to the main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Extract the version from the library.properties file
+      # The expected format is: version=1.2.3
+      - name: Get version from library.properties
+        id: get_version
+        run: |
+          VERSION=$(grep '^version=' library.properties | cut -d'=' -f2)
+          echo "Extracted version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      # Step 3: Fetch all existing tags from the remote repo
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      # Step 4: Get the latest semantic version tag (format: 1.2.3)
+      - name: Get latest semver tag
+        id: latest_tag
+        run: |
+          LATEST=$(git tag --sort=-v:refname | grep -E '^([0-9]+\.){2}[0-9]+$' | head -n 1 || true)
+          echo "Latest existing tag: $LATEST"
+          echo "LATEST=$LATEST" >> $GITHUB_OUTPUT
+
+      # Step 5: Compare the current version with the latest tag
+      # Skip tagging if it's not newer or if it already exists
+      - name: Compare version
+        id: compare_version
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          LATEST="${{ steps.latest_tag.outputs.LATEST }}"
+
+          echo "Comparing VERSION: $VERSION with LATEST: $LATEST"
+
+          if [ -z "$LATEST" ]; then
+            echo "No existing tag found. Proceeding to tag."
+            echo "PROCEED=true" >> $GITHUB_ENV
+          elif [ "$VERSION" = "$LATEST" ]; then
+            echo "::warning::Version $VERSION already exists. Skipping tagging."
+            echo "PROCEED=false" >> $GITHUB_ENV
+          elif [ "$(printf '%s\n' "$LATEST" "$VERSION" | sort -V | head -n1)" != "$LATEST" ]; then
+            echo "::warning::Version $VERSION is not greater than $LATEST. Skipping tagging."
+            echo "PROCEED=false" >> $GITHUB_ENV
+          else
+            echo "Version $VERSION is newer than $LATEST. Proceeding to tag."
+            echo "PROCEED=true" >> $GITHUB_ENV
+          fi
+
+      # Step 6: Create and push the new Git tag if allowed
+      - name: Create and push tag
+        if: env.PROCEED == 'true'
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+          
