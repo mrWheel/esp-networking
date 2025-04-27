@@ -512,6 +512,7 @@ Stream* Networking::begin(const char* hostname, int resetWiFiPin
             });
         }
 
+        wifiManager.setTimeout(240); // Set timeout for the portal
         if (!wifiManager.autoConnect(_hostname)) 
         {
             _multiStream->println("Networking:: Failed to connect to WiFi. Restarting...");
