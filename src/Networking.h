@@ -28,9 +28,12 @@ class MultiStream : public Stream
   private:
     Stream* _serial;
     WiFiClient* _telnetClient;
-    static const size_t BUFFER_SIZE = 128;
+    static const size_t BUFFER_SIZE = 512; //256;
     uint8_t _buffer[BUFFER_SIZE];
     size_t _bufferIndex;
+    
+    // Add a flag to track if we're in a critical section
+    bool _inCriticalSection;
 
     void flushBuffer();
 
@@ -44,9 +47,14 @@ class MultiStream : public Stream
     virtual int read() override { return _serial->read(); }
     virtual int peek() override { return _serial->peek(); }
     virtual void flush() override;
+    
+    // Add methods to control critical sections
+    void beginCriticalSection();
+    void endCriticalSection();
 
     using Print::write;
 };
+
 
 class Networking 
 {

@@ -9,13 +9,13 @@
  * @param telnetClient Pointer to the telnet client
  */
 MultiStream::MultiStream(Stream* serial, WiFiClient* telnetClient)
-    : _serial(serial), _telnetClient(telnetClient), _bufferIndex(0)
+    : _serial(serial), _telnetClient(telnetClient), _bufferIndex(0), _inCriticalSection(false)
 {
 }
 
 /**
  * Writes a single byte to the buffer.
- * Flushes the buffer if it's full.
+ * Flushes the buffer if it's full or if a newline character is encountered.
  * 
  * @param c The byte to write
  * @return The number of bytes written
@@ -25,8 +25,8 @@ size_t MultiStream::write(uint8_t c)
   // Add the byte to the buffer
   _buffer[_bufferIndex++] = c;
   
-  // If the buffer is full, flush it
-  if (_bufferIndex >= BUFFER_SIZE)
+  // If the buffer is full or we encounter a newline, flush it
+  if (_bufferIndex >= BUFFER_SIZE - 1 || c == '\n')
   {
     flushBuffer();
   }
@@ -58,6 +58,16 @@ size_t MultiStream::write(const uint8_t* buffer, size_t size)
     _telnetClient->write(buffer, size);
   }
   
+  // Ensure the data is sent immediately if not in a critical section
+  if (!_inCriticalSection)
+  {
+    _serial->flush();
+    if (_telnetClient && _telnetClient->connected())
+    {
+      _telnetClient->flush();
+    }
+  }
+  
   return size;
 }
 
@@ -68,6 +78,9 @@ void MultiStream::flushBuffer()
 {
   if (_bufferIndex > 0)
   {
+    // Ensure null termination for safety
+    _buffer[_bufferIndex] = 0;
+    
     // Write the buffer to the serial port
     _serial->write(_buffer, _bufferIndex);
     
@@ -75,6 +88,16 @@ void MultiStream::flushBuffer()
     if (_telnetClient && _telnetClient->connected())
     {
       _telnetClient->write(_buffer, _bufferIndex);
+    }
+    
+    // Ensure the data is sent immediately if not in a critical section
+    if (!_inCriticalSection)
+    {
+      _serial->flush();
+      if (_telnetClient && _telnetClient->connected())
+      {
+        _telnetClient->flush();
+      }
     }
     
     // Reset the buffer index
@@ -98,6 +121,25 @@ void MultiStream::flush()
     _telnetClient->flush();
   }
 }
+
+/**
+ * Begin a critical section where flush is deferred until the end.
+ * This is useful for high-frequency writes where you want to batch flushes.
+ */
+void MultiStream::beginCriticalSection()
+{
+  _inCriticalSection = true;
+}
+
+/**
+ * End a critical section and flush any pending data.
+ */
+void MultiStream::endCriticalSection()
+{
+  _inCriticalSection = false;
+  flush();
+}
+
 
 //-- Static instance pointer for ESP8266 callbacks
 #ifdef ESP8266
